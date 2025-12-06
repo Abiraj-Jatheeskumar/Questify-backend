@@ -6,8 +6,8 @@ async function createAdmin() {
   try {
     console.log('⏳ Connecting to MongoDB...');
 
-    // Connect using your existing config.mongoURI
-    await mongoose.connect(config.mongoURI, {
+    // Connect using your existing config.MONGO_URI
+    await mongoose.connect(config.MONGO_URI, {
       useNewUrlParser: true,
       useUnifiedTopology: true
     });
