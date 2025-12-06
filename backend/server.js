@@ -7,8 +7,30 @@ const config = require('./config');
 
 const app = express();
 
+// CORS Configuration - Allow frontend from Vercel
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+
+    const allowedOrigins = [
+      config.FRONTEND_URL,
+      'http://localhost:8000',
+      'http://localhost:5173'
+    ];
+
+    // Allow any Vercel preview/production URL
+    if (origin.includes('.vercel.app') || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
+};
+
 // Middleware
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
