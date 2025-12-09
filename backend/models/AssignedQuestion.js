@@ -23,6 +23,19 @@ const assignedQuestionSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
+  },
+  title: {
+    type: String,
+    default: 'Quiz'
+  },
+  description: {
+    type: String,
+    default: ''
+  },
+  quizNumber: {
+    type: Number,
+    unique: false,
+    sparse: true
   }
 });
 
