@@ -3,7 +3,7 @@ const Response = require('../models/Response');
 const Question = require('../models/Question');
 const Class = require('../models/Class');
 
-// Get assigned questions for student
+// Get assigned questions for student (only from their classes)
 exports.getAssignedQuestions = async (req, res) => {
   try {
     const student = req.user;
@@ -24,7 +24,10 @@ exports.getAssignedQuestions = async (req, res) => {
 
     // Get all questions from assignments
     const allQuestionIds = [];
+    const assignmentMap = {};
+    
     assignments.forEach(assignment => {
+      assignmentMap[assignment._id.toString()] = assignment;
       assignment.questionIds.forEach(q => {
         if (!allQuestionIds.includes(q._id.toString())) {
           allQuestionIds.push(q._id.toString());
@@ -40,22 +43,47 @@ exports.getAssignedQuestions = async (req, res) => {
 
     const answeredQuestionIds = responses.map(r => r.questionId.toString());
 
-    // Format questions with answer status
+    // Format questions with answer status and assignment details
     const questionsWithStatus = [];
     assignments.forEach(assignment => {
+      const assignmentId = assignment._id.toString();
+      let answeredCount = 0;
+      
       assignment.questionIds.forEach(question => {
         const isAnswered = answeredQuestionIds.includes(question._id.toString());
-        questionsWithStatus.push({
-          questionId: question._id,
-          question: question.question,
-          options: question.options,
-          imageUrl: question.imageUrl || '',
-          classId: assignment.classId._id,
-          className: assignment.classId.name,
-          isAnswered,
-          assignmentId: assignment._id
-        });
+        if (isAnswered) answeredCount++;
+        
+        // Check if assignment is completed (all questions answered)
+        const assignmentCompleted = answeredCount === assignment.questionIds.length;
+        
+        // Only add non-answered questions
+        if (!isAnswered) {
+          questionsWithStatus.push({
+            questionId: question._id,
+            assignmentId: assignment._id,
+            question: question.question,
+            options: question.options,
+            imageUrl: question.imageUrl || '',
+            classId: assignment.classId._id,
+            className: assignment.classId.name,
+            isAnswered: false,
+            assignmentTitle: assignment.title || 'Quiz',
+            assignmentDescription: assignment.description || '',
+            assignmentCompleted: assignmentCompleted
+          });
+        }
       });
+      
+      // Add completed flag even for answered questions (to prevent re-opening)
+      const allQuestionsAnswered = answeredCount === assignment.questionIds.length;
+      if (allQuestionsAnswered && questionsWithStatus.length > 0) {
+        // Mark assignment as completed in response
+        questionsWithStatus.forEach(q => {
+          if (q.assignmentId.toString() === assignmentId) {
+            q.assignmentCompleted = true;
+          }
+        });
+      }
     });
 
     res.json(questionsWithStatus);
@@ -65,14 +93,14 @@ exports.getAssignedQuestions = async (req, res) => {
   }
 };
 
-// Submit answer
+// Submit answer with response time calculation in milliseconds
 exports.submitAnswer = async (req, res) => {
   try {
-    const { questionId, selectedAnswer, classId, responseTime } = req.body;
+    const { questionId, selectedAnswer, classId, startTime, assignmentId } = req.body;
     const studentId = req.user._id;
 
-    if (questionId === undefined || selectedAnswer === undefined || !classId) {
-      return res.status(400).json({ message: 'Question ID, selected answer, and class ID are required' });
+    if (questionId === undefined || selectedAnswer === undefined || !classId || startTime === undefined) {
+      return res.status(400).json({ message: 'Question ID, selected answer, class ID, and start time are required' });
     }
 
     if (selectedAnswer < 0 || selectedAnswer > 3) {
@@ -101,29 +129,40 @@ exports.submitAnswer = async (req, res) => {
       return res.status(400).json({ message: 'Question already answered' });
     }
 
+    // Calculate response time in milliseconds
+    // startTime is already in milliseconds from frontend (Date.now())
+    const startTimeMs = typeof startTime === 'number' ? startTime : new Date(startTime).getTime();
+    const endTimeMs = Date.now();
+    const responseTimeMs = endTimeMs - startTimeMs;
+
     // Check if correct
     const isCorrect = question.correctAnswer === selectedAnswer;
 
-    // Create response
+    // Create response with calculated time in milliseconds
     const response = new Response({
       studentId,
       questionId,
       classId,
+      assignedQuestionId: assignmentId,
       selectedAnswer,
       isCorrect,
-      responseTime: responseTime || 0
+      startTime: new Date(),
+      responseTime: responseTimeMs, // Store in milliseconds
+      status: 'answered'
     });
 
     await response.save();
 
     const savedResponse = await Response.findById(response._id)
       .populate('questionId', 'question options correctAnswer')
-      .populate('classId', 'name');
+      .populate('classId', 'name')
+      .populate('assignedQuestionId', 'title');
 
     res.status(201).json({
       response: savedResponse,
       isCorrect,
-      correctAnswer: question.correctAnswer
+      correctAnswer: question.correctAnswer,
+      responseTimeMs: responseTimeMs // Return in milliseconds
     });
   } catch (error) {
     console.error('Submit answer error:', error);
@@ -137,6 +176,7 @@ exports.getMyResponses = async (req, res) => {
     const responses = await Response.find({ studentId: req.user._id })
       .populate('questionId', 'question options correctAnswer')
       .populate('classId', 'name')
+      .populate('assignedQuestionId', 'title')
       .sort({ answeredAt: -1 });
 
     res.json(responses);

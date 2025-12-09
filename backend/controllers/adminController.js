@@ -488,10 +488,15 @@ exports.assignQuestions = async (req, res) => {
       return res.status(400).json({ message: 'Some questions not found' });
     }
 
+    // Auto-increment quiz number for this class
+    const lastAssignment = await AssignedQuestion.findOne({ classId }).sort({ quizNumber: -1 });
+    const quizNumber = (lastAssignment?.quizNumber || 0) + 1;
+
     const assignment = new AssignedQuestion({
       classId,
       questionIds,
-      assignedBy: req.user._id
+      assignedBy: req.user._id,
+      quizNumber
     });
 
     await assignment.save();
