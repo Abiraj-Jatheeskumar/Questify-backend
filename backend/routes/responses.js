@@ -61,7 +61,8 @@ router.get('/export/json/:assignmentId', authenticate, async (req, res) => {
         selectedAnswer: r.selectedAnswer,
         correctAnswer: r.questionId?.correctAnswer,
         isCorrect: r.isCorrect,
-        responseTime: `${r.responseTime} seconds`,
+        responseTimeMs: r.responseTime,
+        responseTimeSec: (r.responseTime / 1000).toFixed(2),
         answeredAt: r.answeredAt
       }))
     };
@@ -84,6 +85,57 @@ router.get('/export/json/:assignmentId', authenticate, async (req, res) => {
     });
   } catch (error) {
     console.error('Export JSON error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Export responses in EdNet format (simple CSV for research)
+router.get('/export/ednet/:assignmentId', authenticate, async (req, res) => {
+  try {
+    const { assignmentId } = req.params;
+    const { classId } = req.query;
+
+    let filter = { assignedQuestionId: assignmentId };
+    if (classId) filter.classId = classId;
+
+    const responses = await Response.find(filter)
+      .populate('studentId', '_id')
+      .populate('questionId', '_id')
+      .sort({ answeredAt: 1 }); // Sort by time ascending like EdNet
+
+    // EdNet format: timestamp,solving_id,question_id,user_answer,elapsed_time
+    const csvHeader = 'timestamp,solving_id,question_id,user_answer,elapsed_time\n';
+    
+    const csvRows = responses.map((r, index) => {
+      const timestamp = new Date(r.answeredAt).getTime(); // Unix timestamp in ms
+      const solvingId = index + 1; // Sequential solving ID
+      const questionId = r.questionId?._id || 'unknown';
+      // Convert 0-4 to a-e for user_answer
+      const userAnswer = ['a', 'b', 'c', 'd', 'e'][r.selectedAnswer] || 'a';
+      const elapsedTime = Math.round(r.responseTime); // Response time in ms
+
+      return `${timestamp},${solvingId},${questionId},${userAnswer},${elapsedTime}`;
+    }).join('\n');
+
+    const csvContent = csvHeader + csvRows;
+
+    const filename = `ednet_format_${assignmentId}_${Date.now()}.csv`;
+    const filepath = path.join(__dirname, '../exports', filename);
+
+    const exportsDir = path.join(__dirname, '../exports');
+    if (!fs.existsSync(exportsDir)) {
+      fs.mkdirSync(exportsDir, { recursive: true });
+    }
+
+    fs.writeFileSync(filepath, csvContent);
+
+    res.download(filepath, filename, (err) => {
+      if (!err) {
+        fs.unlinkSync(filepath);
+      }
+    });
+  } catch (error) {
+    console.error('Export EdNet format error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -112,7 +164,8 @@ router.get('/export/csv/:assignmentId', authenticate, async (req, res) => {
     const totalResponses = responses.length;
     const correctResponses = responses.filter(r => r.isCorrect).length;
     const accuracy = totalResponses > 0 ? ((correctResponses / totalResponses) * 100).toFixed(2) : 0;
-    const avgResponseTime = totalResponses > 0 ? (responses.reduce((sum, r) => sum + (r.responseTime || 0), 0) / totalResponses).toFixed(2) : 0;
+    const avgResponseTimeMs = totalResponses > 0 ? (responses.reduce((sum, r) => sum + (r.responseTime || 0), 0) / totalResponses) : 0;
+    const avgResponseTime = (avgResponseTimeMs / 1000).toFixed(2); // Convert to seconds
 
     // Create CSV header with research fields
     const csvHeader = 'Quiz#,Student Name,Admission No,Email,Class,Question,Selected Answer,Correct Answer,Is Correct,Response Time (ms),Response Time (sec),Engagement Level,Attempt Status,Answered At,Timestamp\n';
@@ -128,17 +181,17 @@ router.get('/export/csv/:assignmentId', authenticate, async (req, res) => {
       const selectedAnswer = r.selectedAnswer || 'N/A';
       const correctAnswer = r.questionId?.correctAnswer || 'N/A';
       const isCorrect = r.isCorrect ? 'Yes' : 'No';
-      const responseTimeMs = r.responseTime ? Math.round(r.responseTime * 1000) : 0;
-      const responseTimeSec = r.responseTime || 0;
+      const responseTimeMs = r.responseTime || 0; // Already in milliseconds
+      const responseTimeSec = r.responseTime ? (r.responseTime / 1000).toFixed(2) : 0;
       
-      // Engagement level based on response time (faster = higher engagement)
+      // Engagement level based on response time in seconds (faster = higher engagement)
       let engagementLevel = 'Low';
-      if (responseTimeSec > 0) {
-        if (responseTimeSec < 5000) engagementLevel = 'Very High';
-        else if (responseTimeSec < 10000) engagementLevel = 'High';
-        else if (responseTimeSec < 20000) engagementLevel = 'Medium';
-        else if (responseTimeSec < 30000) engagementLevel = 'Low-Medium';
-        else engagementLevel = 'Low';
+      if (responseTimeMs > 0) {
+        if (responseTimeMs < 5000) engagementLevel = 'Very High'; // < 5 seconds
+        else if (responseTimeMs < 10000) engagementLevel = 'High'; // 5-10 seconds
+        else if (responseTimeMs < 20000) engagementLevel = 'Medium'; // 10-20 seconds
+        else if (responseTimeMs < 30000) engagementLevel = 'Low-Medium'; // 20-30 seconds
+        else engagementLevel = 'Low'; // > 30 seconds
       }
       
       const attemptStatus = 'Completed';
