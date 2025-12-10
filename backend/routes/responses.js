@@ -31,6 +31,56 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
+// Export ALL responses as JSON
+router.get('/export/json-all', authenticate, async (req, res) => {
+  try {
+    const responses = await Response.find({})
+      .populate('studentId', 'name email admissionNo')
+      .populate('questionId', 'question options correctAnswer')
+      .populate('classId', 'name')
+      .populate('assignedQuestionId', 'title')
+      .sort({ answeredAt: -1 });
+
+    const exportData = {
+      exportedAt: new Date().toISOString(),
+      totalResponses: responses.length,
+      responses: responses.map(r => ({
+        studentName: r.studentId?.name || 'Unknown',
+        studentEmail: r.studentId?.email || 'Unknown',
+        admissionNo: r.studentId?.admissionNo || 'N/A',
+        question: r.questionId?.question || 'Unknown',
+        selectedAnswer: r.selectedAnswer,
+        correctAnswer: r.questionId?.correctAnswer,
+        isCorrect: r.isCorrect,
+        responseTimeMs: r.responseTime,
+        responseTimeSec: (r.responseTime / 1000).toFixed(2),
+        answeredAt: r.answeredAt,
+        className: r.classId?.name || 'Unknown',
+        assignmentTitle: r.assignedQuestionId?.title || 'N/A'
+      }))
+    };
+
+    const filename = `all_responses_${Date.now()}.json`;
+    const filepath = path.join(__dirname, '../exports', filename);
+
+    const exportsDir = path.join(__dirname, '../exports');
+    if (!fs.existsSync(exportsDir)) {
+      fs.mkdirSync(exportsDir, { recursive: true });
+    }
+
+    fs.writeFileSync(filepath, JSON.stringify(exportData, null, 2));
+
+    res.download(filepath, filename, (err) => {
+      if (!err) {
+        fs.unlinkSync(filepath);
+      }
+    });
+  } catch (error) {
+    console.error('Export All JSON error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // Export responses as JSON
 router.get('/export/json/:assignmentId', authenticate, async (req, res) => {
   try {
@@ -89,8 +139,50 @@ router.get('/export/json/:assignmentId', authenticate, async (req, res) => {
   }
 });
 
-// Export responses in EdNet format (simple CSV for research)
-router.get('/export/ednet/:assignmentId', authenticate, async (req, res) => {
+// Export ALL responses in EdNet BASIC format (no assignment filter)
+router.get('/export/ednet-basic-all', authenticate, async (req, res) => {
+  try {
+    const responses = await Response.find({})
+      .populate('studentId', '_id')
+      .populate('questionId', '_id')
+      .sort({ answeredAt: 1 });
+
+    const csvHeader = 'timestamp,solving_id,question_id,user_answer,elapsed_time\n';
+    
+    const csvRows = responses.map((r, index) => {
+      const timestamp = new Date(r.answeredAt).getTime();
+      const solvingId = index + 1;
+      const questionId = r.questionId?._id || 'unknown';
+      const userAnswer = ['a', 'b', 'c', 'd', 'e'][r.selectedAnswer] || 'a';
+      const elapsedTime = Math.round(r.responseTime);
+
+      return `${timestamp},${solvingId},${questionId},${userAnswer},${elapsedTime}`;
+    }).join('\n');
+
+    const csvContent = csvHeader + csvRows;
+    const filename = `ednet_basic_all_${Date.now()}.csv`;
+    const filepath = path.join(__dirname, '../exports', filename);
+
+    const exportsDir = path.join(__dirname, '../exports');
+    if (!fs.existsSync(exportsDir)) {
+      fs.mkdirSync(exportsDir, { recursive: true });
+    }
+
+    fs.writeFileSync(filepath, csvContent);
+
+    res.download(filepath, filename, (err) => {
+      if (!err) {
+        fs.unlinkSync(filepath);
+      }
+    });
+  } catch (error) {
+    console.error('Export All EdNet Basic error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Export responses in EdNet BASIC format (original - no correctness)
+router.get('/export/ednet-basic/:assignmentId', authenticate, async (req, res) => {
   try {
     const { assignmentId } = req.params;
     const { classId } = req.query;
@@ -103,7 +195,7 @@ router.get('/export/ednet/:assignmentId', authenticate, async (req, res) => {
       .populate('questionId', '_id')
       .sort({ answeredAt: 1 }); // Sort by time ascending like EdNet
 
-    // EdNet format: timestamp,solving_id,question_id,user_answer,elapsed_time
+    // EdNet Basic format: timestamp,solving_id,question_id,user_answer,elapsed_time
     const csvHeader = 'timestamp,solving_id,question_id,user_answer,elapsed_time\n';
     
     const csvRows = responses.map((r, index) => {
@@ -119,7 +211,104 @@ router.get('/export/ednet/:assignmentId', authenticate, async (req, res) => {
 
     const csvContent = csvHeader + csvRows;
 
-    const filename = `ednet_format_${assignmentId}_${Date.now()}.csv`;
+    const filename = `ednet_basic_${assignmentId}_${Date.now()}.csv`;
+    const filepath = path.join(__dirname, '../exports', filename);
+
+    const exportsDir = path.join(__dirname, '../exports');
+    if (!fs.existsSync(exportsDir)) {
+      fs.mkdirSync(exportsDir, { recursive: true });
+    }
+
+    fs.writeFileSync(filepath, csvContent);
+
+    res.download(filepath, filename, (err) => {
+      if (!err) {
+        fs.unlinkSync(filepath);
+      }
+    });
+  } catch (error) {
+    console.error('Export EdNet Basic format error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Export ALL responses in EdNet EXTENDED format
+router.get('/export/ednet-all', authenticate, async (req, res) => {
+  try {
+    const responses = await Response.find({})
+      .populate('studentId', '_id')
+      .populate('questionId', '_id correctAnswer')
+      .sort({ answeredAt: 1 });
+
+    const csvHeader = 'timestamp,solving_id,question_id,user_answer,correct_answer,is_correct,elapsed_time\n';
+    
+    const csvRows = responses.map((r, index) => {
+      const timestamp = new Date(r.answeredAt).getTime();
+      const solvingId = index + 1;
+      const questionId = r.questionId?._id || 'unknown';
+      const userAnswer = ['a', 'b', 'c', 'd', 'e'][r.selectedAnswer] || 'a';
+      const correctAnswer = ['a', 'b', 'c', 'd', 'e'][r.questionId?.correctAnswer] || 'a';
+      const isCorrect = r.isCorrect ? 1 : 0;
+      const elapsedTime = Math.round(r.responseTime);
+
+      return `${timestamp},${solvingId},${questionId},${userAnswer},${correctAnswer},${isCorrect},${elapsedTime}`;
+    }).join('\n');
+
+    const csvContent = csvHeader + csvRows;
+    const filename = `ednet_extended_all_${Date.now()}.csv`;
+    const filepath = path.join(__dirname, '../exports', filename);
+
+    const exportsDir = path.join(__dirname, '../exports');
+    if (!fs.existsSync(exportsDir)) {
+      fs.mkdirSync(exportsDir, { recursive: true });
+    }
+
+    fs.writeFileSync(filepath, csvContent);
+
+    res.download(filepath, filename, (err) => {
+      if (!err) {
+        fs.unlinkSync(filepath);
+      }
+    });
+  } catch (error) {
+    console.error('Export All EdNet Extended error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Export responses in EdNet EXTENDED format (with correctness)
+router.get('/export/ednet/:assignmentId', authenticate, async (req, res) => {
+  try {
+    const { assignmentId } = req.params;
+    const { classId } = req.query;
+
+    let filter = { assignedQuestionId: assignmentId };
+    if (classId) filter.classId = classId;
+
+    const responses = await Response.find(filter)
+      .populate('studentId', '_id')
+      .populate('questionId', '_id correctAnswer')
+      .sort({ answeredAt: 1 }); // Sort by time ascending like EdNet
+
+    // EdNet Extended format: timestamp,solving_id,question_id,user_answer,correct_answer,is_correct,elapsed_time
+    const csvHeader = 'timestamp,solving_id,question_id,user_answer,correct_answer,is_correct,elapsed_time\n';
+    
+    const csvRows = responses.map((r, index) => {
+      const timestamp = new Date(r.answeredAt).getTime(); // Unix timestamp in ms
+      const solvingId = index + 1; // Sequential solving ID
+      const questionId = r.questionId?._id || 'unknown';
+      // Convert 0-4 to a-e for user_answer
+      const userAnswer = ['a', 'b', 'c', 'd', 'e'][r.selectedAnswer] || 'a';
+      const correctAnswer = ['a', 'b', 'c', 'd', 'e'][r.questionId?.correctAnswer] || 'a';
+      const isCorrect = r.isCorrect ? 1 : 0; // 1 = correct, 0 = incorrect
+      const elapsedTime = Math.round(r.responseTime); // Response time in ms
+
+      return `${timestamp},${solvingId},${questionId},${userAnswer},${correctAnswer},${isCorrect},${elapsedTime}`;
+    }).join('\n');
+
+    const csvContent = csvHeader + csvRows;
+
+    const filename = `ednet_extended_${assignmentId}_${Date.now()}.csv`;
     const filepath = path.join(__dirname, '../exports', filename);
 
     const exportsDir = path.join(__dirname, '../exports');
@@ -136,6 +325,77 @@ router.get('/export/ednet/:assignmentId', authenticate, async (req, res) => {
     });
   } catch (error) {
     console.error('Export EdNet format error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Export ALL responses as CSV
+router.get('/export/csv-all', authenticate, async (req, res) => {
+  try {
+    const responses = await Response.find({})
+      .populate('studentId', 'name email admissionNo')
+      .populate('questionId', 'question options correctAnswer')
+      .populate('classId', 'name')
+      .populate('assignedQuestionId', 'title quizNumber')
+      .sort({ answeredAt: -1 });
+
+    const totalResponses = responses.length;
+    const correctResponses = responses.filter(r => r.isCorrect).length;
+    const accuracy = totalResponses > 0 ? ((correctResponses / totalResponses) * 100).toFixed(2) : 0;
+    const avgResponseTimeMs = totalResponses > 0 ? (responses.reduce((sum, r) => sum + (r.responseTime || 0), 0) / totalResponses) : 0;
+    const avgResponseTime = (avgResponseTimeMs / 1000).toFixed(2);
+
+    const csvHeader = 'Quiz#,Student Name,Admission No,Email,Class,Question,Selected Answer,Correct Answer,Is Correct,Response Time (ms),Response Time (sec),Engagement Level,Attempt Status,Answered At,Timestamp\n';
+    
+    const csvRows = responses.map((r, index) => {
+      const quizNumber = r.assignedQuestionId?.quizNumber || 'N/A';
+      const studentName = r.studentId?.name || 'Unknown';
+      const admissionNo = r.studentId?.admissionNo || 'N/A';
+      const studentEmail = r.studentId?.email || 'Unknown';
+      const className = r.classId?.name || 'Unknown';
+      const question = `"${(r.questionId?.question || 'Unknown').replace(/"/g, '""')}"`;
+      const selectedAnswer = r.selectedAnswer || 'N/A';
+      const correctAnswer = r.questionId?.correctAnswer || 'N/A';
+      const isCorrect = r.isCorrect ? 'Yes' : 'No';
+      const responseTimeMs = r.responseTime || 0;
+      const responseTimeSec = r.responseTime ? (r.responseTime / 1000).toFixed(2) : 0;
+      
+      let engagementLevel = 'Low';
+      if (responseTimeMs > 0) {
+        if (responseTimeMs < 5000) engagementLevel = 'Very High';
+        else if (responseTimeMs < 10000) engagementLevel = 'High';
+        else if (responseTimeMs < 20000) engagementLevel = 'Medium';
+        else if (responseTimeMs < 30000) engagementLevel = 'Low-Medium';
+        else engagementLevel = 'Low';
+      }
+      
+      const attemptStatus = 'Completed';
+      const answeredAt = new Date(r.answeredAt).toISOString();
+      const timestamp = new Date(r.answeredAt).getTime();
+
+      return `${quizNumber},"${studentName}","${admissionNo}","${studentEmail}","${className}",${question},${selectedAnswer},${correctAnswer},${isCorrect},${responseTimeMs},${responseTimeSec},${engagementLevel},${attemptStatus},${answeredAt},${timestamp}`;
+    }).join('\n');
+
+    const summarySection = `\n\n=== OVERALL SUMMARY ===\nTotal Responses,${totalResponses}\nCorrect Responses,${correctResponses}\nAccuracy Rate,${accuracy}%\nAverage Response Time (seconds),${avgResponseTime}\nExport Date,${new Date().toISOString()}\n`;
+
+    const csvContent = csvHeader + csvRows + summarySection;
+    const filename = `all_responses_detailed_${Date.now()}.csv`;
+    const filepath = path.join(__dirname, '../exports', filename);
+
+    const exportsDir = path.join(__dirname, '../exports');
+    if (!fs.existsSync(exportsDir)) {
+      fs.mkdirSync(exportsDir, { recursive: true });
+    }
+
+    fs.writeFileSync(filepath, csvContent);
+
+    res.download(filepath, filename, (err) => {
+      if (!err) {
+        fs.unlinkSync(filepath);
+      }
+    });
+  } catch (error) {
+    console.error('Export All CSV error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });

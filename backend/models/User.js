@@ -14,6 +14,12 @@ const userSchema = new mongoose.Schema({
     lowercase: true,
     trim: true
   },
+  admissionNo: {
+    type: String,
+    trim: true,
+    sparse: true,
+    unique: true // Unique for students, optional for admins
+  },
   password: {
     type: String,
     required: true

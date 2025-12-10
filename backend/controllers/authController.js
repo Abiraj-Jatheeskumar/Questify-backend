@@ -10,11 +10,16 @@ const generateToken = (userId) => {
 // Register
 exports.register = async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, admissionNo } = req.body;
 
     // Validation
     if (!name || !email || !password || !role) {
       return res.status(400).json({ message: 'Please provide name, email, password, and role' });
+    }
+
+    // For students, admission number is required
+    if (role === 'student' && !admissionNo) {
+      return res.status(400).json({ message: 'Student ID / Admission Number is required' });
     }
 
     // Check if user already exists
@@ -23,10 +28,19 @@ exports.register = async (req, res) => {
       return res.status(400).json({ message: 'Email already registered' });
     }
 
+    // Check if admission number already exists (if provided)
+    if (admissionNo) {
+      const existingAdmission = await User.findOne({ admissionNo });
+      if (existingAdmission) {
+        return res.status(400).json({ message: 'This Student ID is already registered. Please use a different ID or contact admin.' });
+      }
+    }
+
     // Create new user
     const user = new User({
       name: name.trim(),
       email: email.toLowerCase().trim(),
+      admissionNo: admissionNo ? admissionNo.trim() : undefined,
       password,
       role
     });
