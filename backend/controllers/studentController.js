@@ -103,8 +103,8 @@ exports.submitAnswer = async (req, res) => {
       return res.status(400).json({ message: 'Question ID, selected answer, class ID, and start time are required' });
     }
 
-    if (selectedAnswer < 0 || selectedAnswer > 3) {
-      return res.status(400).json({ message: 'Selected answer must be between 0 and 3' });
+    if (selectedAnswer < 0 || selectedAnswer > 4) {
+      return res.status(400).json({ message: 'Selected answer must be between 0 and 4' });
     }
 
     // Check if student is in the class

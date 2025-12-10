@@ -377,12 +377,12 @@ exports.createQuestion = async (req, res) => {
       return res.status(400).json({ message: 'Question, options, and correctAnswer are required' });
     }
 
-    if (options.length !== 4) {
-      return res.status(400).json({ message: 'Question must have exactly 4 options' });
+    if (options.length !== 5) {
+      return res.status(400).json({ message: 'Question must have exactly 5 options' });
     }
 
-    if (correctAnswer < 0 || correctAnswer > 3) {
-      return res.status(400).json({ message: 'Correct answer must be between 0 and 3' });
+    if (correctAnswer < 0 || correctAnswer > 4) {
+      return res.status(400).json({ message: 'Correct answer must be between 0 and 4' });
     }
 
     const newQuestion = new Question({
@@ -416,14 +416,14 @@ exports.updateQuestion = async (req, res) => {
 
     if (question) questionData.question = question;
     if (options) {
-      if (options.length !== 4) {
-        return res.status(400).json({ message: 'Question must have exactly 4 options' });
+      if (options.length !== 5) {
+        return res.status(400).json({ message: 'Question must have exactly 5 options' });
       }
       questionData.options = options;
     }
     if (correctAnswer !== undefined) {
-      if (correctAnswer < 0 || correctAnswer > 3) {
-        return res.status(400).json({ message: 'Correct answer must be between 0 and 3' });
+      if (correctAnswer < 0 || correctAnswer > 4) {
+        return res.status(400).json({ message: 'Correct answer must be between 0 and 4' });
       }
       questionData.correctAnswer = correctAnswer;
     }
