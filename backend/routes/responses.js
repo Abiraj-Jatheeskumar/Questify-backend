@@ -283,5 +283,355 @@ router.get('/export/csv-all', authenticate, async (req, res) => {
   }
 });
 
+// Export ALL responses as EdNet Basic format (all quizzes) - MUST come before parameterized routes
+router.get('/export/ednet-basic-all', authenticate, async (req, res) => {
+  try {
+    const responses = await Response.find({})
+      .populate('studentId', 'name email admissionNo')
+      .populate('questionId', 'question options correctAnswer')
+      .populate('assignedQuestionId', 'title quizNumber questionIds')
+      .sort({ answeredAt: -1 });
+
+    // Create mapping for solving_id (auto-increment attempt number per student per quiz)
+    // solving_id = attempt number (1, 2, 3...) unique per student per quiz
+    const solvingIdMap = {}; // Key: studentId_assignmentId, Value: solving_id
+    const studentAttemptCounters = {}; // Track attempt number per student
+    
+    // Group responses by student and assignment to assign solving_id
+    responses.forEach(r => {
+      const studentId = r.studentId?._id?.toString();
+      const assignmentId = r.assignedQuestionId?._id?.toString();
+      
+      if (studentId && assignmentId) {
+        const key = `${studentId}_${assignmentId}`;
+        if (!solvingIdMap[key]) {
+          // Initialize counter for this student if not exists
+          if (!studentAttemptCounters[studentId]) {
+            studentAttemptCounters[studentId] = 0;
+          }
+          // Increment and assign solving_id for this student's attempt
+          studentAttemptCounters[studentId]++;
+          solvingIdMap[key] = studentAttemptCounters[studentId];
+        }
+      }
+    });
+
+    // Create mapping for question_id (format: q{quizNumber}_{questionPosition})
+    // e.g., q1_1 (Quiz 1, Question 1), q1_2 (Quiz 1, Question 2)
+    // Note: For Export ALL, we need to fetch assignments separately to get questionIds properly
+    const questionIdMap = {};
+    const assignmentIds = [...new Set(responses.map(r => r.assignedQuestionId?._id?.toString()).filter(Boolean))];
+    const assignments = await AssignedQuestion.find({ _id: { $in: assignmentIds } });
+    
+    // Build mapping: questionId -> { quizNumber, position }
+    assignments.forEach(assignment => {
+      const quizNumber = assignment.quizNumber || 1;
+      const questionIds = assignment.questionIds || [];
+      questionIds.forEach((qId, index) => {
+        const qIdStr = qId.toString();
+        // Only set if not already mapped (first occurrence wins)
+        if (!questionIdMap[qIdStr]) {
+          questionIdMap[qIdStr] = `q${quizNumber}_${index + 1}`;
+        }
+      });
+    });
+
+    // Helper function to convert numeric answer (0-4) to letter (a-e)
+    const numToLetter = (num) => {
+      const letters = ['a', 'b', 'c', 'd', 'e'];
+      return letters[num] || 'a';
+    };
+
+    // EdNet Basic format: timestamp, solving_id, question_id, user_answer, elapsed_time
+    const csvHeader = 'timestamp,solving_id,question_id,user_answer,elapsed_time\n';
+    
+    const csvRows = responses.map((r) => {
+      const timestamp = new Date(r.answeredAt).getTime();
+      const studentId = r.studentId?._id?.toString();
+      const assignmentId = r.assignedQuestionId?._id?.toString();
+      const key = studentId && assignmentId ? `${studentId}_${assignmentId}` : null;
+      const solvingId = key ? (solvingIdMap[key] || 'unknown') : 'unknown';
+      const qId = r.questionId?._id?.toString();
+      const questionId = qId ? (questionIdMap[qId] || 'unknown') : 'unknown';
+      const userAnswer = numToLetter(r.selectedAnswer || 0);
+      const elapsedTime = r.responseTime || 0; // Keep in milliseconds
+
+      return `${timestamp},${solvingId},${questionId},${userAnswer},${elapsedTime}`;
+    }).join('\n');
+
+    const csvContent = csvHeader + csvRows;
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=ednet_basic_all_${Date.now()}.csv`);
+    res.send(csvContent);
+  } catch (error) {
+    console.error('Export All EdNet Basic error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Export ALL responses as EdNet Extended format (all quizzes) - MUST come before parameterized routes
+router.get('/export/ednet-all', authenticate, async (req, res) => {
+  try {
+    const responses = await Response.find({})
+      .populate('studentId', 'name email admissionNo')
+      .populate('questionId', 'question options correctAnswer')
+      .populate('assignedQuestionId', 'title quizNumber questionIds')
+      .sort({ answeredAt: -1 });
+
+    // Create mapping for solving_id (auto-increment attempt number per student per quiz)
+    // solving_id = attempt number (1, 2, 3...) unique per student per quiz
+    const solvingIdMap = {}; // Key: studentId_assignmentId, Value: solving_id
+    const studentAttemptCounters = {}; // Track attempt number per student
+    
+    // Group responses by student and assignment to assign solving_id
+    responses.forEach(r => {
+      const studentId = r.studentId?._id?.toString();
+      const assignmentId = r.assignedQuestionId?._id?.toString();
+      
+      if (studentId && assignmentId) {
+        const key = `${studentId}_${assignmentId}`;
+        if (!solvingIdMap[key]) {
+          // Initialize counter for this student if not exists
+          if (!studentAttemptCounters[studentId]) {
+            studentAttemptCounters[studentId] = 0;
+          }
+          // Increment and assign solving_id for this student's attempt
+          studentAttemptCounters[studentId]++;
+          solvingIdMap[key] = studentAttemptCounters[studentId];
+        }
+      }
+    });
+
+    // Create mapping for question_id (format: q{quizNumber}_{questionPosition})
+    // e.g., q1_1 (Quiz 1, Question 1), q1_2 (Quiz 1, Question 2)
+    // Note: For Export ALL, we need to fetch assignments separately to get questionIds properly
+    const questionIdMap = {};
+    const assignmentIds = [...new Set(responses.map(r => r.assignedQuestionId?._id?.toString()).filter(Boolean))];
+    const assignments = await AssignedQuestion.find({ _id: { $in: assignmentIds } });
+    
+    // Build mapping: questionId -> { quizNumber, position }
+    assignments.forEach(assignment => {
+      const quizNumber = assignment.quizNumber || 1;
+      const questionIds = assignment.questionIds || [];
+      questionIds.forEach((qId, index) => {
+        const qIdStr = qId.toString();
+        // Only set if not already mapped (first occurrence wins)
+        if (!questionIdMap[qIdStr]) {
+          questionIdMap[qIdStr] = `q${quizNumber}_${index + 1}`;
+        }
+      });
+    });
+
+    // Helper function to convert numeric answer (0-4) to letter (a-e)
+    const numToLetter = (num) => {
+      const letters = ['a', 'b', 'c', 'd', 'e'];
+      return letters[num] || 'a';
+    };
+
+    // EdNet Extended format: timestamp, solving_id, question_id, user_answer, elapsed_time, correct_answer, is_correct
+    const csvHeader = 'timestamp,solving_id,question_id,user_answer,elapsed_time,correct_answer,is_correct\n';
+    
+    const csvRows = responses.map((r) => {
+      const timestamp = new Date(r.answeredAt).getTime();
+      const studentId = r.studentId?._id?.toString();
+      const assignmentId = r.assignedQuestionId?._id?.toString();
+      const key = studentId && assignmentId ? `${studentId}_${assignmentId}` : null;
+      const solvingId = key ? (solvingIdMap[key] || 'unknown') : 'unknown';
+      const qId = r.questionId?._id?.toString();
+      const questionId = qId ? (questionIdMap[qId] || 'unknown') : 'unknown';
+      const userAnswer = numToLetter(r.selectedAnswer || 0);
+      const elapsedTime = r.responseTime || 0; // Keep in milliseconds
+      const correctAnswer = numToLetter(r.questionId?.correctAnswer ?? 0);
+      const isCorrect = r.isCorrect ? 1 : 0;
+
+      return `${timestamp},${solvingId},${questionId},${userAnswer},${elapsedTime},${correctAnswer},${isCorrect}`;
+    }).join('\n');
+
+    const csvContent = csvHeader + csvRows;
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=ednet_extended_all_${Date.now()}.csv`);
+    res.send(csvContent);
+  } catch (error) {
+    console.error('Export All EdNet Extended error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Export responses as EdNet Basic format (single assignment)
+// Format: timestamp, solving_id, question_id, user_answer, elapsed_time
+router.get('/export/ednet-basic/:assignmentId', authenticate, async (req, res) => {
+  try {
+    const { assignmentId } = req.params;
+    const { classId } = req.query;
+
+    let filter = { assignedQuestionId: assignmentId };
+    if (classId) filter.classId = classId;
+
+    const responses = await Response.find(filter)
+      .populate('studentId', 'name email admissionNo')
+      .populate('questionId', 'question options correctAnswer')
+      .populate('assignedQuestionId', 'title quizNumber questionIds')
+      .sort({ answeredAt: -1 });
+
+    // Get assignment details for question positioning
+    const assignment = await AssignedQuestion.findById(assignmentId);
+    const quizNumber = assignment?.quizNumber || 1;
+    const questionIds = assignment?.questionIds || [];
+
+    // Create mapping for solving_id (auto-increment attempt number per student per quiz)
+    // solving_id = attempt number (1, 2, 3...) unique per student per quiz
+    const solvingIdMap = {}; // Key: studentId_assignmentId, Value: solving_id
+    const studentAttemptCounters = {}; // Track attempt number per student
+    
+    // Group responses by student and assignment to assign solving_id
+    responses.forEach(r => {
+      const studentId = r.studentId?._id?.toString();
+      const assignmentId = r.assignedQuestionId?._id?.toString();
+      
+      if (studentId && assignmentId) {
+        const key = `${studentId}_${assignmentId}`;
+        if (!solvingIdMap[key]) {
+          // Initialize counter for this student if not exists
+          if (!studentAttemptCounters[studentId]) {
+            studentAttemptCounters[studentId] = 0;
+          }
+          // Increment and assign solving_id for this student's attempt
+          studentAttemptCounters[studentId]++;
+          solvingIdMap[key] = studentAttemptCounters[studentId];
+        }
+      }
+    });
+
+    // Create mapping for question_id (format: q{quizNumber}_{questionPosition})
+    // e.g., q1_1 (Quiz 1, Question 1), q1_2 (Quiz 1, Question 2)
+    const questionIdMap = {};
+    questionIds.forEach((qId, index) => {
+      questionIdMap[qId.toString()] = `q${quizNumber}_${index + 1}`;
+    });
+
+    // Helper function to convert numeric answer (0-4) to letter (a-e)
+    const numToLetter = (num) => {
+      const letters = ['a', 'b', 'c', 'd', 'e'];
+      return letters[num] || 'a';
+    };
+
+    // EdNet Basic format: timestamp, solving_id, question_id, user_answer, elapsed_time
+    const csvHeader = 'timestamp,solving_id,question_id,user_answer,elapsed_time\n';
+    
+    const csvRows = responses.map((r) => {
+      const timestamp = new Date(r.answeredAt).getTime();
+      const studentId = r.studentId?._id?.toString();
+      const assignmentId = r.assignedQuestionId?._id?.toString();
+      const key = studentId && assignmentId ? `${studentId}_${assignmentId}` : null;
+      const solvingId = key ? (solvingIdMap[key] || 'unknown') : 'unknown';
+      const qId = r.questionId?._id?.toString();
+      const questionId = qId ? (questionIdMap[qId] || 'unknown') : 'unknown';
+      const userAnswer = numToLetter(r.selectedAnswer || 0);
+      const elapsedTime = r.responseTime || 0; // Keep in milliseconds
+
+      return `${timestamp},${solvingId},${questionId},${userAnswer},${elapsedTime}`;
+    }).join('\n');
+
+    const csvContent = csvHeader + csvRows;
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=ednet_basic_${Date.now()}.csv`);
+    res.send(csvContent);
+  } catch (error) {
+    console.error('Export EdNet Basic error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Export responses as EdNet Extended format (single assignment)
+// Format: timestamp, solving_id, question_id, user_answer, elapsed_time, correct_answer, is_correct
+router.get('/export/ednet/:assignmentId', authenticate, async (req, res) => {
+  try {
+    const { assignmentId } = req.params;
+    const { classId } = req.query;
+
+    let filter = { assignedQuestionId: assignmentId };
+    if (classId) filter.classId = classId;
+
+    const responses = await Response.find(filter)
+      .populate('studentId', 'name email admissionNo')
+      .populate('questionId', 'question options correctAnswer')
+      .populate('assignedQuestionId', 'title quizNumber questionIds')
+      .sort({ answeredAt: -1 });
+
+    // Get assignment details for question positioning
+    const assignment = await AssignedQuestion.findById(assignmentId);
+    const quizNumber = assignment?.quizNumber || 1;
+    const questionIds = assignment?.questionIds || [];
+
+    // Create mapping for solving_id (auto-increment attempt number per student per quiz)
+    // solving_id = attempt number (1, 2, 3...) unique per student per quiz
+    const solvingIdMap = {}; // Key: studentId_assignmentId, Value: solving_id
+    const studentAttemptCounters = {}; // Track attempt number per student
+    
+    // Group responses by student and assignment to assign solving_id
+    responses.forEach(r => {
+      const studentId = r.studentId?._id?.toString();
+      const assignmentId = r.assignedQuestionId?._id?.toString();
+      
+      if (studentId && assignmentId) {
+        const key = `${studentId}_${assignmentId}`;
+        if (!solvingIdMap[key]) {
+          // Initialize counter for this student if not exists
+          if (!studentAttemptCounters[studentId]) {
+            studentAttemptCounters[studentId] = 0;
+          }
+          // Increment and assign solving_id for this student's attempt
+          studentAttemptCounters[studentId]++;
+          solvingIdMap[key] = studentAttemptCounters[studentId];
+        }
+      }
+    });
+
+    // Create mapping for question_id (format: q{quizNumber}_{questionPosition})
+    // e.g., q1_1 (Quiz 1, Question 1), q1_2 (Quiz 1, Question 2)
+    const questionIdMap = {};
+    questionIds.forEach((qId, index) => {
+      questionIdMap[qId.toString()] = `q${quizNumber}_${index + 1}`;
+    });
+
+    // Helper function to convert numeric answer (0-4) to letter (a-e)
+    const numToLetter = (num) => {
+      const letters = ['a', 'b', 'c', 'd', 'e'];
+      return letters[num] || 'a';
+    };
+
+    // EdNet Extended format: timestamp, solving_id, question_id, user_answer, elapsed_time, correct_answer, is_correct
+    const csvHeader = 'timestamp,solving_id,question_id,user_answer,elapsed_time,correct_answer,is_correct\n';
+    
+    const csvRows = responses.map((r) => {
+      const timestamp = new Date(r.answeredAt).getTime();
+      const studentId = r.studentId?._id?.toString();
+      const assignmentId = r.assignedQuestionId?._id?.toString();
+      const key = studentId && assignmentId ? `${studentId}_${assignmentId}` : null;
+      const solvingId = key ? (solvingIdMap[key] || 'unknown') : 'unknown';
+      const qId = r.questionId?._id?.toString();
+      const questionId = qId ? (questionIdMap[qId] || 'unknown') : 'unknown';
+      const userAnswer = numToLetter(r.selectedAnswer || 0);
+      const elapsedTime = r.responseTime || 0; // Keep in milliseconds
+      const correctAnswer = numToLetter(r.questionId?.correctAnswer ?? 0);
+      const isCorrect = r.isCorrect ? 1 : 0;
+
+      return `${timestamp},${solvingId},${questionId},${userAnswer},${elapsedTime},${correctAnswer},${isCorrect}`;
+    }).join('\n');
+
+    const csvContent = csvHeader + csvRows;
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=ednet_extended_${Date.now()}.csv`);
+    res.send(csvContent);
+  } catch (error) {
+    console.error('Export EdNet Extended error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 module.exports = router;
 

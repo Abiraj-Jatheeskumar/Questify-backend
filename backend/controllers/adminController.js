@@ -51,7 +51,7 @@ exports.getStudent = async (req, res) => {
 // Create student
 exports.createStudent = async (req, res) => {
   try {
-    const { email, name, classIds } = req.body;
+    const { email, name, classIds, admissionNo } = req.body;
 
     if (!email || !name) {
       return res.status(400).json({ message: 'Email and name are required' });
@@ -63,16 +63,25 @@ exports.createStudent = async (req, res) => {
       return res.status(400).json({ message: 'Email already exists' });
     }
 
+    // If admissionNo is provided, check for duplicate
+    if (admissionNo && admissionNo.trim()) {
+      const existingAdmission = await User.findOne({ admissionNo: admissionNo.trim(), role: 'student' });
+      if (existingAdmission) {
+        return res.status(400).json({ message: 'Admission number already registered for a student' });
+      }
+    }
+
     // Generate password
     const password = generatePassword();
 
     // Create student
     const student = new User({
-      email,
-      name,
+      email: email.toLowerCase().trim(),
+      name: name.trim(),
       password,
       role: 'student',
-      classIds: classIds || []
+      classIds: classIds || [],
+      admissionNo: admissionNo ? admissionNo.trim() : undefined
     });
 
     await student.save();
@@ -110,14 +119,34 @@ exports.createStudent = async (req, res) => {
 // Update student
 exports.updateStudent = async (req, res) => {
   try {
-    const { name, classIds } = req.body;
+    const { name, classIds, admissionNo } = req.body;
     const student = await User.findById(req.params.id);
 
     if (!student || student.role !== 'student') {
       return res.status(404).json({ message: 'Student not found' });
     }
 
-    if (name) student.name = name;
+    if (name) student.name = name.trim();
+    
+    // Handle admissionNo update
+    if (admissionNo !== undefined) {
+      if (admissionNo && admissionNo.trim()) {
+        // Check for duplicate admissionNo (excluding current student)
+        const existingAdmission = await User.findOne({ 
+          admissionNo: admissionNo.trim(), 
+          role: 'student',
+          _id: { $ne: student._id }
+        });
+        if (existingAdmission) {
+          return res.status(400).json({ message: 'Admission number already registered for another student' });
+        }
+        student.admissionNo = admissionNo.trim();
+      } else {
+        // Allow clearing admissionNo by sending empty string
+        student.admissionNo = undefined;
+      }
+    }
+    
     if (classIds) {
       // Remove student from old classes
       await Class.updateMany(
@@ -377,12 +406,12 @@ exports.createQuestion = async (req, res) => {
       return res.status(400).json({ message: 'Question, options, and correctAnswer are required' });
     }
 
-    if (options.length !== 4) {
-      return res.status(400).json({ message: 'Question must have exactly 4 options' });
+    if (options.length !== 5) {
+      return res.status(400).json({ message: 'Question must have exactly 5 options' });
     }
 
-    if (correctAnswer < 0 || correctAnswer > 3) {
-      return res.status(400).json({ message: 'Correct answer must be between 0 and 3' });
+    if (correctAnswer < 0 || correctAnswer > 4) {
+      return res.status(400).json({ message: 'Correct answer must be between 0 and 4' });
     }
 
     const newQuestion = new Question({
@@ -416,14 +445,14 @@ exports.updateQuestion = async (req, res) => {
 
     if (question) questionData.question = question;
     if (options) {
-      if (options.length !== 4) {
-        return res.status(400).json({ message: 'Question must have exactly 4 options' });
+      if (options.length !== 5) {
+        return res.status(400).json({ message: 'Question must have exactly 5 options' });
       }
       questionData.options = options;
     }
     if (correctAnswer !== undefined) {
-      if (correctAnswer < 0 || correctAnswer > 3) {
-        return res.status(400).json({ message: 'Correct answer must be between 0 and 3' });
+      if (correctAnswer < 0 || correctAnswer > 4) {
+        return res.status(400).json({ message: 'Correct answer must be between 0 and 4' });
       }
       questionData.correctAnswer = correctAnswer;
     }
