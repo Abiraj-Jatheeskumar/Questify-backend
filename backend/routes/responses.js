@@ -108,14 +108,120 @@ router.get('/export/csv/:assignmentId', authenticate, async (req, res) => {
       .populate('classId', 'name')
       .populate('questionIds');
 
-    // Calculate statistics
+    // Create mapping for question_id (format: q{quizNumber}_{questionPosition})
+    const questionIdMap = {};
+    if (assignment && assignment.questionIds) {
+      const quizNumber = assignment.quizNumber || 1;
+      assignment.questionIds.forEach((qId, index) => {
+        const qIdStr = qId._id?.toString() || qId.toString();
+        if (!questionIdMap[qIdStr]) {
+          questionIdMap[qIdStr] = `q${quizNumber}_${index + 1}`;
+        }
+      });
+    }
+
+    // Calculate per-question statistics (for relative comparison)
+    const questionStats = {};
+    responses.forEach(r => {
+      const qId = r.questionId?._id?.toString();
+      if (qId) {
+        if (!questionStats[qId]) {
+          questionStats[qId] = {
+            times: [],
+            correctness: []
+          };
+        }
+        questionStats[qId].times.push(r.responseTime ? (r.responseTime / 1000) : 0);
+        questionStats[qId].correctness.push(r.isCorrect);
+      }
+    });
+    
+    // Calculate percentiles for each question
+    Object.keys(questionStats).forEach(qId => {
+      const stats = questionStats[qId];
+      const sortedTimes = [...stats.times].sort((a, b) => a - b);
+      stats.medianTime = sortedTimes.length > 0 
+        ? sortedTimes[Math.floor(sortedTimes.length / 2)] 
+        : 0;
+      stats.p25Time = sortedTimes.length > 0 
+        ? sortedTimes[Math.floor(sortedTimes.length * 0.25)] 
+        : 0;
+      stats.p75Time = sortedTimes.length > 0 
+        ? sortedTimes[Math.floor(sortedTimes.length * 0.75)] 
+        : 0;
+      stats.avgCorrectness = stats.correctness.filter(c => c).length / stats.correctness.length;
+    });
+
+    // Calculate overall statistics
     const totalResponses = responses.length;
     const correctResponses = responses.filter(r => r.isCorrect).length;
     const accuracy = totalResponses > 0 ? ((correctResponses / totalResponses) * 100).toFixed(2) : 0;
     const avgResponseTime = totalResponses > 0 ? (responses.reduce((sum, r) => sum + (r.responseTime || 0), 0) / totalResponses).toFixed(2) : 0;
 
-    // Create CSV header with research fields
-    const csvHeader = 'Quiz#,Student Name,Admission No,Email,Class,Question,Selected Answer,Correct Answer,Is Correct,Response Time (ms),Response Time (sec),Engagement Level,Attempt Status,Answered At,Timestamp\n';
+    // Enhanced Engagement Algorithm (Percentile-Based per Question)
+    // Compares student's performance to all students' performance on the same question
+    const calculateEngagement = (isCorrect, responseTimeSec, questionId) => {
+      const responseTimeSecNum = parseFloat(responseTimeSec);
+      
+      // If no response time, default to passive
+      if (!responseTimeSecNum || responseTimeSecNum <= 0) {
+        return 'Passive';
+      }
+      
+      const qId = questionId?.toString();
+      const stats = questionStats[qId];
+      
+      // If no stats for this question, fall back to confidence-based
+      if (!stats || !stats.medianTime) {
+        const isFast = responseTimeSecNum < 15;
+        const isMedium = responseTimeSecNum >= 15 && responseTimeSecNum <= 30;
+        if (isCorrect && (isFast || isMedium)) return 'Active';
+        if (isCorrect) return 'Moderate';
+        if (!isCorrect && isFast) return 'Passive';
+        if (!isCorrect && isMedium) return 'Moderate';
+        return 'Passive';
+      }
+      
+      // Relative speed: How does this student compare to others on this question?
+      // Faster than median = engaged, slower = less engaged
+      const isFasterThanMedian = responseTimeSecNum < stats.medianTime;
+      const isFasterThanP25 = responseTimeSecNum < stats.p25Time; // Top 25% fastest
+      const isSlowerThanP75 = responseTimeSecNum > stats.p75Time; // Bottom 25% slowest
+      
+      // Correctness score (adjusted by question difficulty)
+      const correctnessScore = isCorrect ? 1.0 : 0.0;
+      const questionDifficulty = 1 - stats.avgCorrectness; // Higher = harder question
+      
+      // Speed score based on percentile position
+      let speedScore = 0.5; // Default neutral
+      if (isFasterThanP25) {
+        speedScore = 1.0; // Top 25% fastest
+      } else if (isFasterThanMedian) {
+        speedScore = 0.7; // Faster than median
+      } else if (isSlowerThanP75) {
+        speedScore = 0.2; // Bottom 25% slowest
+      } else {
+        speedScore = 0.4; // Between median and P75
+      }
+      
+      // Combined engagement score
+      // Correctness (60%) + Speed relative to question (40%)
+      // Harder questions get slight boost for correct answers
+      const difficultyBonus = isCorrect && questionDifficulty > 0.3 ? 0.1 : 0;
+      const engagementScore = (correctnessScore * 0.6) + (speedScore * 0.4) + difficultyBonus;
+      
+      // Classification
+      if (engagementScore >= 0.75) {
+        return 'Active';    // High correctness + faster than most students
+      } else if (engagementScore >= 0.45) {
+        return 'Moderate';   // Medium engagement
+      } else {
+        return 'Passive';    // Low correctness + slower than most students
+      }
+    };
+
+    // Create CSV header with research fields (added Question ID)
+    const csvHeader = 'Quiz#,Student Name,Admission No,Email,Class,Question ID,Question,Selected Answer,Correct Answer,Is Correct,Response Time (ms),Response Time (sec),Engagement Level,Attempt Status,Answered At,Timestamp\n';
 
     // Create CSV rows with enhanced data
     const csvRows = responses.map((r, index) => {
@@ -124,6 +230,8 @@ router.get('/export/csv/:assignmentId', authenticate, async (req, res) => {
       const admissionNo = r.studentId?.admissionNo || 'N/A';
       const studentEmail = r.studentId?.email || 'Unknown';
       const className = r.classId?.name || 'Unknown';
+      const qId = r.questionId?._id?.toString();
+      const questionId = qId ? (questionIdMap[qId] || 'unknown') : 'N/A';
       const question = `"${(r.questionId?.question || 'Unknown').replace(/"/g, '""')}"`;
       const selectedAnswer = r.selectedAnswer || 'N/A';
       const correctAnswer = r.questionId?.correctAnswer || 'N/A';
@@ -132,22 +240,14 @@ router.get('/export/csv/:assignmentId', authenticate, async (req, res) => {
       const responseTimeMs = r.responseTime || 0;
       const responseTimeSec = r.responseTime ? (r.responseTime / 1000).toFixed(2) : 0;
       
-      // Engagement level based on response time in seconds (faster = higher engagement)
-      let engagementLevel = 'Low';
-      const responseTimeSecNum = parseFloat(responseTimeSec);
-      if (responseTimeSecNum > 0) {
-        if (responseTimeSecNum < 5) engagementLevel = 'Very High';      // < 5 seconds
-        else if (responseTimeSecNum < 10) engagementLevel = 'High';     // 5-10 seconds
-        else if (responseTimeSecNum < 20) engagementLevel = 'Medium';    // 10-20 seconds
-        else if (responseTimeSecNum < 30) engagementLevel = 'Low-Medium'; // 20-30 seconds
-        else engagementLevel = 'Low';                                    // > 30 seconds
-      }
+      // Calculate engagement level using percentile-based formula (compares to all students on same question)
+      const engagementLevel = calculateEngagement(r.isCorrect, responseTimeSec, r.questionId?._id);
       
       const attemptStatus = 'Completed';
       const answeredAt = new Date(r.answeredAt).toISOString();
       const timestamp = new Date(r.answeredAt).getTime();
 
-      return `${quizNumber},"${studentName}","${admissionNo}","${studentEmail}","${className}",${question},${selectedAnswer},${correctAnswer},${isCorrect},${responseTimeMs},${responseTimeSec},${engagementLevel},${attemptStatus},${answeredAt},${timestamp}`;
+      return `${quizNumber},"${studentName}","${admissionNo}","${studentEmail}","${className}",${questionId},${question},${selectedAnswer},${correctAnswer},${isCorrect},${responseTimeMs},${responseTimeSec},${engagementLevel},${attemptStatus},${answeredAt},${timestamp}`;
     }).join('\n');
 
     // Summary section
@@ -226,6 +326,54 @@ router.get('/export/csv-all', authenticate, async (req, res) => {
       .populate('assignedQuestionId', 'title quizNumber')
       .sort({ answeredAt: -1 });
 
+    // Create mapping for question_id (format: q{quizNumber}_{questionPosition})
+    const questionIdMap = {};
+    const assignmentIds = [...new Set(responses.map(r => r.assignedQuestionId?._id?.toString()).filter(Boolean))];
+    const assignments = await AssignedQuestion.find({ _id: { $in: assignmentIds } });
+    
+    assignments.forEach(assignment => {
+      const quizNumber = assignment.quizNumber || 1;
+      const questionIds = assignment.questionIds || [];
+      questionIds.forEach((qId, index) => {
+        const qIdStr = qId._id?.toString() || qId.toString();
+        if (!questionIdMap[qIdStr]) {
+          questionIdMap[qIdStr] = `q${quizNumber}_${index + 1}`;
+        }
+      });
+    });
+
+    // Calculate per-question statistics (for relative comparison)
+    const questionStats = {};
+    responses.forEach(r => {
+      const qId = r.questionId?._id?.toString();
+      if (qId) {
+        if (!questionStats[qId]) {
+          questionStats[qId] = {
+            times: [],
+            correctness: []
+          };
+        }
+        questionStats[qId].times.push(r.responseTime ? (r.responseTime / 1000) : 0);
+        questionStats[qId].correctness.push(r.isCorrect);
+      }
+    });
+    
+    // Calculate percentiles for each question
+    Object.keys(questionStats).forEach(qId => {
+      const stats = questionStats[qId];
+      const sortedTimes = [...stats.times].sort((a, b) => a - b);
+      stats.medianTime = sortedTimes.length > 0 
+        ? sortedTimes[Math.floor(sortedTimes.length / 2)] 
+        : 0;
+      stats.p25Time = sortedTimes.length > 0 
+        ? sortedTimes[Math.floor(sortedTimes.length * 0.25)] 
+        : 0;
+      stats.p75Time = sortedTimes.length > 0 
+        ? sortedTimes[Math.floor(sortedTimes.length * 0.75)] 
+        : 0;
+      stats.avgCorrectness = stats.correctness.filter(c => c).length / stats.correctness.length;
+    });
+
     // Calculate overall statistics
     const totalResponses = responses.length;
     const correctResponses = responses.filter(r => r.isCorrect).length;
@@ -234,8 +382,69 @@ router.get('/export/csv-all', authenticate, async (req, res) => {
       ? (responses.reduce((sum, r) => sum + ((r.responseTime || 0) / 1000), 0) / totalResponses).toFixed(2) 
       : 0;
 
-    // Create CSV header
-    const csvHeader = 'Quiz#,Student Name,Admission No,Email,Class,Question,Selected Answer,Correct Answer,Is Correct,Response Time (ms),Response Time (sec),Engagement Level,Attempt Status,Answered At,Timestamp\n';
+    // Enhanced Engagement Algorithm (Percentile-Based per Question)
+    // Compares student's performance to all students' performance on the same question
+    const calculateEngagement = (isCorrect, responseTimeSec, questionId) => {
+      const responseTimeSecNum = parseFloat(responseTimeSec);
+      
+      // If no response time, default to passive
+      if (!responseTimeSecNum || responseTimeSecNum <= 0) {
+        return 'Passive';
+      }
+      
+      const qId = questionId?.toString();
+      const stats = questionStats[qId];
+      
+      // If no stats for this question, fall back to confidence-based
+      if (!stats || !stats.medianTime) {
+        const isFast = responseTimeSecNum < 15;
+        const isMedium = responseTimeSecNum >= 15 && responseTimeSecNum <= 30;
+        if (isCorrect && (isFast || isMedium)) return 'Active';
+        if (isCorrect) return 'Moderate';
+        if (!isCorrect && isFast) return 'Passive';
+        if (!isCorrect && isMedium) return 'Moderate';
+        return 'Passive';
+      }
+      
+      // Relative speed: How does this student compare to others on this question?
+      const isFasterThanMedian = responseTimeSecNum < stats.medianTime;
+      const isFasterThanP25 = responseTimeSecNum < stats.p25Time; // Top 25% fastest
+      const isSlowerThanP75 = responseTimeSecNum > stats.p75Time; // Bottom 25% slowest
+      
+      // Correctness score (adjusted by question difficulty)
+      const correctnessScore = isCorrect ? 1.0 : 0.0;
+      const questionDifficulty = 1 - stats.avgCorrectness; // Higher = harder question
+      
+      // Speed score based on percentile position
+      let speedScore = 0.5; // Default neutral
+      if (isFasterThanP25) {
+        speedScore = 1.0; // Top 25% fastest
+      } else if (isFasterThanMedian) {
+        speedScore = 0.7; // Faster than median
+      } else if (isSlowerThanP75) {
+        speedScore = 0.2; // Bottom 25% slowest
+      } else {
+        speedScore = 0.4; // Between median and P75
+      }
+      
+      // Combined engagement score
+      // Correctness (60%) + Speed relative to question (40%)
+      // Harder questions get slight boost for correct answers
+      const difficultyBonus = isCorrect && questionDifficulty > 0.3 ? 0.1 : 0;
+      const engagementScore = (correctnessScore * 0.6) + (speedScore * 0.4) + difficultyBonus;
+      
+      // Classification
+      if (engagementScore >= 0.75) {
+        return 'Active';    // High correctness + faster than most students
+      } else if (engagementScore >= 0.45) {
+        return 'Moderate';   // Medium engagement
+      } else {
+        return 'Passive';    // Low correctness + slower than most students
+      }
+    };
+
+    // Create CSV header (added Question ID)
+    const csvHeader = 'Quiz#,Student Name,Admission No,Email,Class,Question ID,Question,Selected Answer,Correct Answer,Is Correct,Response Time (ms),Response Time (sec),Engagement Level,Attempt Status,Answered At,Timestamp\n';
 
     // Create CSV rows
     const csvRows = responses.map((r) => {
@@ -244,6 +453,8 @@ router.get('/export/csv-all', authenticate, async (req, res) => {
       const admissionNo = r.studentId?.admissionNo || 'N/A';
       const studentEmail = r.studentId?.email || 'Unknown';
       const className = r.classId?.name || 'Unknown';
+      const qId = r.questionId?._id?.toString();
+      const questionId = qId ? (questionIdMap[qId] || 'unknown') : 'N/A';
       const question = `"${(r.questionId?.question || 'Unknown').replace(/"/g, '""')}"`;
       const selectedAnswer = r.selectedAnswer || 'N/A';
       const correctAnswer = r.questionId?.correctAnswer || 'N/A';
@@ -251,22 +462,14 @@ router.get('/export/csv-all', authenticate, async (req, res) => {
       const responseTimeMs = r.responseTime || 0;
       const responseTimeSec = r.responseTime ? (r.responseTime / 1000).toFixed(2) : 0;
       
-      // Engagement level
-      let engagementLevel = 'Low';
-      const responseTimeSecNum = parseFloat(responseTimeSec);
-      if (responseTimeSecNum > 0) {
-        if (responseTimeSecNum < 5) engagementLevel = 'Very High';
-        else if (responseTimeSecNum < 10) engagementLevel = 'High';
-        else if (responseTimeSecNum < 20) engagementLevel = 'Medium';
-        else if (responseTimeSecNum < 30) engagementLevel = 'Low-Medium';
-        else engagementLevel = 'Low';
-      }
+      // Calculate engagement level using percentile-based formula (compares to all students on same question)
+      const engagementLevel = calculateEngagement(r.isCorrect, responseTimeSec, r.questionId?._id);
       
       const attemptStatus = 'Completed';
       const answeredAt = new Date(r.answeredAt).toISOString();
       const timestamp = new Date(r.answeredAt).getTime();
 
-      return `${quizNumber},"${studentName}","${admissionNo}","${studentEmail}","${className}",${question},${selectedAnswer},${correctAnswer},${isCorrect},${responseTimeMs},${responseTimeSec},${engagementLevel},${attemptStatus},${answeredAt},${timestamp}`;
+      return `${quizNumber},"${studentName}","${admissionNo}","${studentEmail}","${className}",${questionId},${question},${selectedAnswer},${correctAnswer},${isCorrect},${responseTimeMs},${responseTimeSec},${engagementLevel},${attemptStatus},${answeredAt},${timestamp}`;
     }).join('\n');
 
     // Summary section
