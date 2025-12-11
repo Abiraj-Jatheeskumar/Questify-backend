@@ -17,22 +17,17 @@ exports.register = async (req, res) => {
       return res.status(400).json({ message: 'Please provide name, email, password, and role' });
     }
 
-    // For students, admission number is required
-    if (role === 'student' && !admissionNo) {
-      return res.status(400).json({ message: 'Student ID / Admission Number is required' });
-    }
-
     // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ message: 'Email already registered' });
     }
 
-    // Check if admission number already exists (if provided)
-    if (admissionNo) {
+    // If admissionNo is provided and role is student, check for duplicate
+    if (admissionNo && role === 'student') {
       const existingAdmission = await User.findOne({ admissionNo });
       if (existingAdmission) {
-        return res.status(400).json({ message: 'This Student ID is already registered. Please use a different ID or contact admin.' });
+        return res.status(400).json({ message: 'Admission number already registered' });
       }
     }
 
@@ -40,9 +35,9 @@ exports.register = async (req, res) => {
     const user = new User({
       name: name.trim(),
       email: email.toLowerCase().trim(),
-      admissionNo: admissionNo ? admissionNo.trim() : undefined,
       password,
-      role
+      role,
+      admissionNo: admissionNo ? admissionNo.trim() : undefined
     });
 
     // Save user (password will be hashed by the pre-save hook)
@@ -54,7 +49,8 @@ exports.register = async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        role: user.role
+        role: user.role,
+        admissionNo: user.admissionNo
       }
     });
   } catch (error) {
@@ -90,7 +86,8 @@ exports.login = async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        role: user.role
+        role: user.role,
+        admissionNo: user.admissionNo
       }
     });
   } catch (error) {

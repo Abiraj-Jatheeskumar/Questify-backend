@@ -51,28 +51,16 @@ exports.getStudent = async (req, res) => {
 // Create student
 exports.createStudent = async (req, res) => {
   try {
-    const { email, name, classIds, admissionNo } = req.body;
+    const { email, name, classIds } = req.body;
 
     if (!email || !name) {
       return res.status(400).json({ message: 'Email and name are required' });
-    }
-
-    if (!admissionNo) {
-      return res.status(400).json({ message: 'Admission number is required' });
     }
 
     // Check if email already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ message: 'Email already exists' });
-    }
-
-    // Check if admission number already exists (if provided)
-    if (admissionNo) {
-      const existingAdmission = await User.findOne({ admissionNo });
-      if (existingAdmission) {
-        return res.status(400).json({ message: 'Admission number already exists' });
-      }
     }
 
     // Generate password
@@ -82,7 +70,6 @@ exports.createStudent = async (req, res) => {
     const student = new User({
       email,
       name,
-      admissionNo: admissionNo || undefined,
       password,
       role: 'student',
       classIds: classIds || []
@@ -123,7 +110,7 @@ exports.createStudent = async (req, res) => {
 // Update student
 exports.updateStudent = async (req, res) => {
   try {
-    const { name, classIds, admissionNo } = req.body;
+    const { name, classIds } = req.body;
     const student = await User.findById(req.params.id);
 
     if (!student || student.role !== 'student') {
@@ -131,21 +118,6 @@ exports.updateStudent = async (req, res) => {
     }
 
     if (name) student.name = name;
-    
-    // Update admission number if provided
-    if (admissionNo !== undefined) {
-      // Check if new admission number already exists (for another student)
-      if (admissionNo) {
-        const existingAdmission = await User.findOne({ 
-          admissionNo, 
-          _id: { $ne: student._id } 
-        });
-        if (existingAdmission) {
-          return res.status(400).json({ message: 'Admission number already exists' });
-        }
-      }
-      student.admissionNo = admissionNo || undefined;
-    }
     if (classIds) {
       // Remove student from old classes
       await Class.updateMany(
@@ -405,12 +377,12 @@ exports.createQuestion = async (req, res) => {
       return res.status(400).json({ message: 'Question, options, and correctAnswer are required' });
     }
 
-    if (options.length !== 5) {
-      return res.status(400).json({ message: 'Question must have exactly 5 options' });
+    if (options.length !== 4) {
+      return res.status(400).json({ message: 'Question must have exactly 4 options' });
     }
 
-    if (correctAnswer < 0 || correctAnswer > 4) {
-      return res.status(400).json({ message: 'Correct answer must be between 0 and 4' });
+    if (correctAnswer < 0 || correctAnswer > 3) {
+      return res.status(400).json({ message: 'Correct answer must be between 0 and 3' });
     }
 
     const newQuestion = new Question({
@@ -444,14 +416,14 @@ exports.updateQuestion = async (req, res) => {
 
     if (question) questionData.question = question;
     if (options) {
-      if (options.length !== 5) {
-        return res.status(400).json({ message: 'Question must have exactly 5 options' });
+      if (options.length !== 4) {
+        return res.status(400).json({ message: 'Question must have exactly 4 options' });
       }
       questionData.options = options;
     }
     if (correctAnswer !== undefined) {
-      if (correctAnswer < 0 || correctAnswer > 4) {
-        return res.status(400).json({ message: 'Correct answer must be between 0 and 4' });
+      if (correctAnswer < 0 || correctAnswer > 3) {
+        return res.status(400).json({ message: 'Correct answer must be between 0 and 3' });
       }
       questionData.correctAnswer = correctAnswer;
     }
@@ -499,7 +471,7 @@ exports.deleteQuestion = async (req, res) => {
 // Assign questions to class
 exports.assignQuestions = async (req, res) => {
   try {
-    const { classId, questionIds, title } = req.body;
+    const { classId, questionIds } = req.body;
 
     if (!classId || !questionIds || questionIds.length === 0) {
       return res.status(400).json({ message: 'Class ID and question IDs are required' });
@@ -524,8 +496,7 @@ exports.assignQuestions = async (req, res) => {
       classId,
       questionIds,
       assignedBy: req.user._id,
-      quizNumber,
-      title: title || `Quiz #${quizNumber}` // Use custom title or auto-generate
+      quizNumber
     });
 
     await assignment.save();
@@ -570,9 +541,10 @@ exports.getAllResponses = async (req, res) => {
     if (questionId) filter.questionId = questionId;
 
     const responses = await Response.find(filter)
-      .populate('studentId', 'name email')
+      .populate('studentId', 'name email admissionNo')
       .populate('questionId', 'question options correctAnswer')
       .populate('classId', 'name')
+      .populate('assignedQuestionId', 'title quizNumber questionIds classId')
       .sort({ answeredAt: -1 });
 
     res.json(responses);

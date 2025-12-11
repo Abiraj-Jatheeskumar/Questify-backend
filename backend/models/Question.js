@@ -11,16 +11,16 @@ const questionSchema = new mongoose.Schema({
     required: true,
     validate: {
       validator: function(v) {
-        return v.length === 5;
+        return v.length === 4;
       },
-      message: 'Question must have exactly 5 options'
+      message: 'Question must have exactly 4 options'
     }
   },
   correctAnswer: {
     type: Number,
     required: true,
     min: 0,
-    max: 4
+    max: 3
   },
   classIds: [{
     type: mongoose.Schema.Types.ObjectId,

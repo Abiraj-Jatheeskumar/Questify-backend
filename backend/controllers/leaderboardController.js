@@ -12,10 +12,12 @@ exports.getLeaderboard = async (req, res) => {
       filter.classId = classId;
     }
 
-    // Get all responses
+    // Get all responses with limit for performance (max 50,000 responses)
+    // For 2000 students with 10 questions each = 20,000 responses (safe)
     const responses = await Response.find(filter)
       .populate('studentId', 'name email')
-      .populate('classId', 'name');
+      .populate('classId', 'name')
+      .limit(50000); // Safety limit to prevent memory issues
 
     // Calculate statistics per student
     const studentStats = {};
@@ -67,7 +69,7 @@ exports.getLeaderboard = async (req, res) => {
     res.json(leaderboard);
   } catch (error) {
     console.error('Get leaderboard error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    res.status(500).json({ message: 'Failed to load leaderboard. Please try again later.' });
   }
 };
 

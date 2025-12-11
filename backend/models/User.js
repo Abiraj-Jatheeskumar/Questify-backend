@@ -14,12 +14,6 @@ const userSchema = new mongoose.Schema({
     lowercase: true,
     trim: true
   },
-  admissionNo: {
-    type: String,
-    trim: true,
-    sparse: true,
-    unique: true // Unique for students, optional for admins
-  },
   password: {
     type: String,
     required: true
@@ -28,6 +22,12 @@ const userSchema = new mongoose.Schema({
     type: String,
     enum: ['admin', 'student'],
     required: true
+  },
+  admissionNo: {
+    type: String,
+    trim: true,
+    sparse: true, // Allows multiple null values but enforces uniqueness for non-null values
+    index: true // Add index for faster lookups
   },
   classIds: [{
     type: mongoose.Schema.Types.ObjectId,

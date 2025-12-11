@@ -103,8 +103,8 @@ exports.submitAnswer = async (req, res) => {
       return res.status(400).json({ message: 'Question ID, selected answer, class ID, and start time are required' });
     }
 
-    if (selectedAnswer < 0 || selectedAnswer > 4) {
-      return res.status(400).json({ message: 'Selected answer must be between 0 and 4' });
+    if (selectedAnswer < 0 || selectedAnswer > 3) {
+      return res.status(400).json({ message: 'Selected answer must be between 0 and 3' });
     }
 
     // Check if student is in the class
@@ -134,24 +134,6 @@ exports.submitAnswer = async (req, res) => {
     const startTimeMs = typeof startTime === 'number' ? startTime : new Date(startTime).getTime();
     const endTimeMs = Date.now();
     const responseTimeMs = endTimeMs - startTimeMs;
-
-    // Validate response time (1 second to 5 minutes)
-    const MIN_RESPONSE_TIME = 1000; // 1 second
-    const MAX_RESPONSE_TIME = 300000; // 5 minutes
-    
-    if (responseTimeMs < MIN_RESPONSE_TIME) {
-      return res.status(400).json({ 
-        message: 'Response time too fast. Please take time to read the question.',
-        responseTime: responseTimeMs 
-      });
-    }
-    
-    if (responseTimeMs > MAX_RESPONSE_TIME) {
-      return res.status(400).json({ 
-        message: 'Response time exceeded. Maximum time per question is 5 minutes.',
-        responseTime: responseTimeMs 
-      });
-    }
 
     // Check if correct
     const isCorrect = question.correctAnswer === selectedAnswer;

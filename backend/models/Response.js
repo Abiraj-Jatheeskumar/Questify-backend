@@ -24,7 +24,7 @@ const responseSchema = new mongoose.Schema({
     type: Number,
     required: true,
     min: 0,
-    max: 4
+    max: 3
   },
   isCorrect: {
     type: Boolean,
@@ -52,9 +52,11 @@ const responseSchema = new mongoose.Schema({
 });
 
 // Index for faster queries
-responseSchema.index({ studentId: 1, questionId: 1 });
+responseSchema.index({ studentId: 1, questionId: 1 }, { unique: true }); // Prevent duplicate responses
 responseSchema.index({ classId: 1 });
 responseSchema.index({ assignedQuestionId: 1 });
+responseSchema.index({ answeredAt: -1 }); // For time-based queries
+responseSchema.index({ studentId: 1, classId: 1 }); // For leaderboard queries
 
 module.exports = mongoose.model('Response', responseSchema);
 
