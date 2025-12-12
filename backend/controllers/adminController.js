@@ -32,6 +32,36 @@ exports.getAllStudents = async (req, res) => {
   }
 };
 
+// Export students as CSV
+exports.exportStudentsCSV = async (req, res) => {
+  try {
+    const students = await User.find({ role: 'student' })
+      .select('admissionNo name email')
+      .sort({ admissionNo: 1 });
+
+    // Create CSV header
+    const csvHeader = 'Admission No,Name,Email\n';
+
+    // Create CSV rows
+    const csvRows = students.map(student => {
+      const admissionNo = student.admissionNo || 'N/A';
+      const name = `"${(student.name || 'Unknown').replace(/"/g, '""')}"`;
+      const email = student.email || 'N/A';
+      return `${admissionNo},${name},${email}`;
+    }).join('\n');
+
+    const csvContent = csvHeader + csvRows;
+
+    // Set headers for file download
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=students_${Date.now()}.csv`);
+    res.send(csvContent);
+  } catch (error) {
+    console.error('Export students CSV error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 // Get single student
 exports.getStudent = async (req, res) => {
   try {
