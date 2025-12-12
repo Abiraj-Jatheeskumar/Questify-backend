@@ -6,6 +6,7 @@ const { authenticate, isAdmin } = require('../middleware/auth');
 // Student routes
 router.get('/students', authenticate, isAdmin, adminController.getAllStudents);
 router.get('/export-students-csv', authenticate, isAdmin, adminController.exportStudentsCSV);
+router.get('/export-students-pdf', authenticate, isAdmin, adminController.exportStudentsPDF);
 router.get('/students/:id', authenticate, isAdmin, adminController.getStudent);
 router.post('/students', authenticate, isAdmin, adminController.createStudent);
 router.put('/students/:id', authenticate, isAdmin, adminController.updateStudent);

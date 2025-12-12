@@ -62,6 +62,95 @@ exports.exportStudentsCSV = async (req, res) => {
   }
 };
 
+// Export students as PDF
+exports.exportStudentsPDF = async (req, res) => {
+  try {
+    const students = await User.find({ role: 'student' })
+      .select('admissionNo name email')
+      .sort({ admissionNo: 1 });
+
+    // Create HTML content for PDF
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            padding: 40px;
+          }
+          h1 {
+            color: #4F46E5;
+            text-align: center;
+            margin-bottom: 30px;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+          }
+          th {
+            background-color: #4F46E5;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: bold;
+          }
+          td {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+          }
+          tr:nth-child(even) {
+            background-color: #f9fafb;
+          }
+          tr:hover {
+            background-color: #f3f4f6;
+          }
+          .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #6b7280;
+            font-size: 12px;
+          }
+        </style>
+      </head>
+      <body>
+        <h1>Student List</h1>
+        <table>
+          <thead>
+            <tr>
+              <th>Admission No</th>
+              <th>Name</th>
+              <th>Email</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${students.map(student => `
+              <tr>
+                <td>${student.admissionNo || 'N/A'}</td>
+                <td>${student.name || 'Unknown'}</td>
+                <td>${student.email || 'N/A'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        <div class="footer">
+          <p>Total Students: ${students.length}</p>
+          <p>Generated on: ${new Date().toLocaleString()}</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    // Send HTML that can be converted to PDF by browser
+    res.setHeader('Content-Type', 'text/html');
+    res.send(htmlContent);
+  } catch (error) {
+    console.error('Export students PDF error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 // Get single student
 exports.getStudent = async (req, res) => {
   try {
