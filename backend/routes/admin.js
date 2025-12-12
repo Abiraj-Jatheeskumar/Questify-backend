@@ -9,6 +9,8 @@ router.get('/export-students-csv', authenticate, isAdmin, adminController.export
 router.get('/export-students-pdf', authenticate, isAdmin, adminController.exportStudentsPDF);
 router.get('/export-students-csv-no-email', authenticate, isAdmin, adminController.exportStudentsCSVNoEmail);
 router.get('/export-students-pdf-no-email', authenticate, isAdmin, adminController.exportStudentsPDFNoEmail);
+router.get('/export-students-csv-masked', authenticate, isAdmin, adminController.exportStudentsCSVMaskedEmail);
+router.get('/export-students-pdf-masked', authenticate, isAdmin, adminController.exportStudentsPDFMaskedEmail);
 router.get('/students/:id', authenticate, isAdmin, adminController.getStudent);
 router.post('/students', authenticate, isAdmin, adminController.createStudent);
 router.put('/students/:id', authenticate, isAdmin, adminController.updateStudent);
