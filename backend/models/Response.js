@@ -52,7 +52,8 @@ const responseSchema = new mongoose.Schema({
 });
 
 // Index for faster queries
-responseSchema.index({ studentId: 1, questionId: 1 }, { unique: true }); // Prevent duplicate responses
+// Allow same question to be answered in different assignments, but prevent duplicates within same assignment
+responseSchema.index({ studentId: 1, questionId: 1, assignedQuestionId: 1 }, { unique: true });
 responseSchema.index({ classId: 1 });
 responseSchema.index({ assignedQuestionId: 1 });
 responseSchema.index({ answeredAt: -1 }); // For time-based queries

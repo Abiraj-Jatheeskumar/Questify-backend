@@ -22,42 +22,33 @@ exports.getAssignedQuestions = async (req, res) => {
       .populate('classId', 'name')
       .sort({ assignedAt: -1 });
 
-    // Get all questions from assignments
-    const allQuestionIds = [];
-    const assignmentMap = {};
-    
-    assignments.forEach(assignment => {
-      assignmentMap[assignment._id.toString()] = assignment;
-      assignment.questionIds.forEach(q => {
-        if (!allQuestionIds.includes(q._id.toString())) {
-          allQuestionIds.push(q._id.toString());
-        }
-      });
-    });
-
-    // Get responses for these questions by this student
-    const responses = await Response.find({
-      studentId: student._id,
-      questionId: { $in: allQuestionIds }
-    });
-
-    const answeredQuestionIds = responses.map(r => r.questionId.toString());
-
     // Format questions with answer status and assignment details
     const questionsWithStatus = [];
-    assignments.forEach(assignment => {
+    
+    // Process each assignment separately to check answers per assignment
+    for (const assignment of assignments) {
       const assignmentId = assignment._id.toString();
+      
+      // Get responses for this specific assignment only
+      const assignmentResponses = await Response.find({
+        studentId: student._id,
+        assignedQuestionId: assignmentId
+      });
+      
+      const answeredQuestionIdsInAssignment = new Set(
+        assignmentResponses.map(r => r.questionId.toString())
+      );
+      
       let answeredCount = 0;
       
       assignment.questionIds.forEach(question => {
-        const isAnswered = answeredQuestionIds.includes(question._id.toString());
-        if (isAnswered) answeredCount++;
+        const questionIdStr = question._id.toString();
+        const isAnswered = answeredQuestionIdsInAssignment.has(questionIdStr);
         
-        // Check if assignment is completed (all questions answered)
-        const assignmentCompleted = answeredCount === assignment.questionIds.length;
-        
-        // Only add non-answered questions
-        if (!isAnswered) {
+        if (isAnswered) {
+          answeredCount++;
+        } else {
+          // Only add non-answered questions for this assignment
           questionsWithStatus.push({
             questionId: question._id,
             assignmentId: assignment._id,
@@ -69,22 +60,22 @@ exports.getAssignedQuestions = async (req, res) => {
             isAnswered: false,
             assignmentTitle: assignment.title || 'Quiz',
             assignmentDescription: assignment.description || '',
-            assignmentCompleted: assignmentCompleted
+            assignmentCompleted: false // Will be updated below if needed
           });
         }
       });
       
-      // Add completed flag even for answered questions (to prevent re-opening)
+      // Mark assignment as completed if all questions are answered
       const allQuestionsAnswered = answeredCount === assignment.questionIds.length;
-      if (allQuestionsAnswered && questionsWithStatus.length > 0) {
-        // Mark assignment as completed in response
+      if (allQuestionsAnswered) {
+        // Mark all questions in this assignment as completed
         questionsWithStatus.forEach(q => {
           if (q.assignmentId.toString() === assignmentId) {
             q.assignmentCompleted = true;
           }
         });
       }
-    });
+    }
 
     res.json(questionsWithStatus);
   } catch (error) {
@@ -119,14 +110,15 @@ exports.submitAnswer = async (req, res) => {
       return res.status(404).json({ message: 'Question not found' });
     }
 
-    // Check if already answered
+    // Check if already answered in this specific assignment
     const existingResponse = await Response.findOne({
       studentId,
-      questionId
+      questionId,
+      assignedQuestionId: assignmentId
     });
 
     if (existingResponse) {
-      return res.status(400).json({ message: 'Question already answered' });
+      return res.status(400).json({ message: 'Question already answered in this quiz' });
     }
 
     // Calculate response time in milliseconds

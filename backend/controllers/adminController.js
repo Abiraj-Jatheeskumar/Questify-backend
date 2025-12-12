@@ -500,7 +500,7 @@ exports.deleteQuestion = async (req, res) => {
 // Assign questions to class
 exports.assignQuestions = async (req, res) => {
   try {
-    const { classId, questionIds } = req.body;
+    const { classId, questionIds, title, description } = req.body;
 
     if (!classId || !questionIds || questionIds.length === 0) {
       return res.status(400).json({ message: 'Class ID and question IDs are required' });
@@ -525,7 +525,9 @@ exports.assignQuestions = async (req, res) => {
       classId,
       questionIds,
       assignedBy: req.user._id,
-      quizNumber
+      quizNumber,
+      title: title && title.trim() ? title.trim() : undefined, // Use provided title or default to 'Quiz' from model
+      description: description && description.trim() ? description.trim() : undefined
     });
 
     await assignment.save();
