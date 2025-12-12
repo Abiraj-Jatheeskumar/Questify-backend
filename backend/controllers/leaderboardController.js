@@ -5,11 +5,41 @@ const User = require('../models/User');
 exports.getLeaderboard = async (req, res) => {
   try {
     const { classId } = req.query;
+    const currentStudent = req.user;
+
+    // If user is a student, only show leaderboard for quizzes they've participated in
+    let participatedAssignmentIds = [];
+    if (currentStudent.role === 'student') {
+      // Get all assignments (quizzes) that the current student has participated in
+      const studentResponses = await Response.distinct('assignedQuestionId', {
+        studentId: currentStudent._id
+      });
+      
+      participatedAssignmentIds = studentResponses.map(id => id ? id.toString() : null).filter(id => id !== null);
+      
+      // If student hasn't participated in any quiz, return empty leaderboard
+      if (participatedAssignmentIds.length === 0) {
+        return res.json([]);
+      }
+    }
 
     // Build filter
     const filter = {};
     if (classId) {
       filter.classId = classId;
+    } else if (currentStudent.role === 'student') {
+      // For students, only show their classes
+      if (currentStudent.classIds && currentStudent.classIds.length > 0) {
+        filter.classId = { $in: currentStudent.classIds };
+      } else {
+        // Student not in any class, return empty
+        return res.json([]);
+      }
+    }
+
+    // If student, only include responses from quizzes they've participated in
+    if (currentStudent.role === 'student' && participatedAssignmentIds.length > 0) {
+      filter.assignedQuestionId = { $in: participatedAssignmentIds };
     }
 
     // Get all responses with limit for performance (max 50,000 responses)
