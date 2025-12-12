@@ -233,8 +233,9 @@ router.get('/export/csv/:assignmentId', authenticate, async (req, res) => {
       const qId = r.questionId?._id?.toString();
       const questionId = qId ? (questionIdMap[qId] || 'unknown') : 'N/A';
       const question = `"${(r.questionId?.question || 'Unknown').replace(/"/g, '""')}"`;
-      const selectedAnswer = r.selectedAnswer || 'N/A';
-      const correctAnswer = r.questionId?.correctAnswer || 'N/A';
+      // Handle 0 as valid answer (first option), only use N/A if null/undefined
+      const selectedAnswer = (r.selectedAnswer !== null && r.selectedAnswer !== undefined) ? r.selectedAnswer : 'N/A';
+      const correctAnswer = (r.questionId?.correctAnswer !== null && r.questionId?.correctAnswer !== undefined) ? r.questionId.correctAnswer : 'N/A';
       const isCorrect = r.isCorrect ? 'Yes' : 'No';
       // responseTime is stored in milliseconds in database
       const responseTimeMs = r.responseTime || 0;
@@ -456,8 +457,9 @@ router.get('/export/csv-all', authenticate, async (req, res) => {
       const qId = r.questionId?._id?.toString();
       const questionId = qId ? (questionIdMap[qId] || 'unknown') : 'N/A';
       const question = `"${(r.questionId?.question || 'Unknown').replace(/"/g, '""')}"`;
-      const selectedAnswer = r.selectedAnswer || 'N/A';
-      const correctAnswer = r.questionId?.correctAnswer || 'N/A';
+      // Handle 0 as valid answer (first option), only use N/A if null/undefined
+      const selectedAnswer = (r.selectedAnswer !== null && r.selectedAnswer !== undefined) ? r.selectedAnswer : 'N/A';
+      const correctAnswer = (r.questionId?.correctAnswer !== null && r.questionId?.correctAnswer !== undefined) ? r.questionId.correctAnswer : 'N/A';
       const isCorrect = r.isCorrect ? 'Yes' : 'No';
       const responseTimeMs = r.responseTime || 0;
       const responseTimeSec = r.responseTime ? (r.responseTime / 1000).toFixed(2) : 0;
