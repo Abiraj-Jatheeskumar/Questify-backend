@@ -34,6 +34,7 @@ router.delete('/questions/:id', authenticate, isAdmin, adminController.deleteQue
 // Assignment routes
 router.post('/assign-questions', authenticate, isAdmin, adminController.assignQuestions);
 router.get('/assignments', authenticate, isAdmin, adminController.getAllAssignments);
+router.get('/assignments/:assignmentId/non-participants', authenticate, isAdmin, adminController.getNonParticipants);
 
 // Response routes
 router.get('/responses', authenticate, isAdmin, adminController.getAllResponses);

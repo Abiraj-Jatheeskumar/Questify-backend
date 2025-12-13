@@ -951,6 +951,51 @@ exports.getAllAssignments = async (req, res) => {
   }
 };
 
+// Get students who haven't attempted a specific quiz
+exports.getNonParticipants = async (req, res) => {
+  try {
+    const { assignmentId } = req.params;
+
+    // Get the assignment with class info
+    const assignment = await AssignedQuestion.findById(assignmentId).populate('classId');
+    if (!assignment) {
+      return res.status(404).json({ message: 'Assignment not found' });
+    }
+
+    // Get all students in the assigned class
+    const allStudents = await User.find({
+      role: 'student',
+      classIds: assignment.classId._id
+    }).select('name email admissionNo');
+
+    // Get unique student IDs who have submitted at least one response for this quiz
+    const participatedStudentIds = await Response.distinct('studentId', {
+      assignedQuestionId: assignmentId
+    });
+
+    // Convert ObjectIds to strings for comparison
+    const participatedIdStrings = participatedStudentIds.map(id => id.toString());
+
+    // Filter out students who have participated
+    const nonParticipants = allStudents.filter(
+      student => !participatedIdStrings.includes(student._id.toString())
+    );
+
+    res.json({
+      assignmentId,
+      assignmentTitle: assignment.title,
+      className: assignment.classId.name,
+      totalStudents: allStudents.length,
+      participated: participatedStudentIds.length,
+      notParticipated: nonParticipants.length,
+      nonParticipants
+    });
+  } catch (error) {
+    console.error('Get non-participants error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 // ========== VIEW RESPONSES ==========
 
 // Get all responses with filters
