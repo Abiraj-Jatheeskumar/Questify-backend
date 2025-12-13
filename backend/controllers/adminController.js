@@ -497,7 +497,7 @@ exports.createStudent = async (req, res) => {
 // Update student
 exports.updateStudent = async (req, res) => {
   try {
-    const { name, classIds, admissionNo } = req.body;
+    const { name, email, classIds, admissionNo } = req.body;
     const student = await User.findById(req.params.id);
 
     if (!student || student.role !== 'student') {
@@ -505,6 +505,20 @@ exports.updateStudent = async (req, res) => {
     }
 
     if (name) student.name = name.trim();
+    
+    // Handle email update
+    if (email && email.trim()) {
+      const trimmedEmail = email.trim().toLowerCase();
+      // Check for duplicate email (excluding current student)
+      const existingUser = await User.findOne({ 
+        email: trimmedEmail, 
+        _id: { $ne: student._id }
+      });
+      if (existingUser) {
+        return res.status(400).json({ message: 'Email already registered for another user' });
+      }
+      student.email = trimmedEmail;
+    }
     
     // Handle admissionNo update
     if (admissionNo !== undefined) {
