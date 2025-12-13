@@ -3,6 +3,7 @@ const Class = require('../models/Class');
 const Question = require('../models/Question');
 const AssignedQuestion = require('../models/AssignedQuestion');
 const Response = require('../models/Response');
+const QuizSession = require('../models/QuizSession');
 const { sendPasswordEmail } = require('../services/emailService');
 const crypto = require('crypto');
 
@@ -1175,6 +1176,115 @@ exports.exportNonParticipantsPDF = async (req, res) => {
     res.send(htmlContent);
   } catch (error) {
     console.error('Export non-participants PDF error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// Get live quiz progress for an assignment
+exports.getLiveQuizProgress = async (req, res) => {
+  try {
+    const { assignmentId } = req.params;
+
+    // Get the assignment with class info
+    const assignment = await AssignedQuestion.findById(assignmentId).populate('classId');
+    if (!assignment) {
+      return res.status(404).json({ message: 'Assignment not found' });
+    }
+
+    const totalQuestions = assignment.questionIds.length;
+
+    // Get all students in the assigned class
+    const allStudents = await User.find({
+      role: 'student',
+      classIds: assignment.classId._id
+    }).select('name email admissionNo');
+
+    // Get all quiz sessions for this assignment
+    const sessions = await QuizSession.find({
+      assignmentId
+    }).populate('studentId', 'name email admissionNo');
+
+    // Categorize students
+    const notStarted = [];
+    const inProgress = [];
+    const completed = [];
+
+    const sessionMap = new Map(sessions.map(s => [s.studentId._id.toString(), s]));
+
+    allStudents.forEach(student => {
+      const studentId = student._id.toString();
+      const session = sessionMap.get(studentId);
+
+      if (!session) {
+        // No session means not started
+        notStarted.push({
+          _id: student._id,
+          name: student.name,
+          email: student.email,
+          admissionNo: student.admissionNo
+        });
+      } else if (session.status === 'completed') {
+        const timeTaken = session.completedAt && session.startedAt 
+          ? Math.round((session.completedAt - session.startedAt) / 1000) 
+          : 0;
+        
+        completed.push({
+          _id: student._id,
+          name: student.name,
+          email: student.email,
+          admissionNo: student.admissionNo,
+          questionsAnswered: session.questionsAnswered,
+          totalQuestions: session.totalQuestions,
+          startedAt: session.startedAt,
+          completedAt: session.completedAt,
+          timeTaken: timeTaken
+        });
+      } else {
+        // Calculate idle time
+        const now = new Date();
+        const lastActivity = session.lastActivityAt || session.startedAt;
+        const idleTimeMinutes = lastActivity 
+          ? Math.round((now - lastActivity) / 1000 / 60) 
+          : 0;
+        
+        inProgress.push({
+          _id: student._id,
+          name: student.name,
+          email: student.email,
+          admissionNo: student.admissionNo,
+          currentQuestionIndex: session.currentQuestionIndex,
+          questionsAnswered: session.questionsAnswered,
+          totalQuestions: session.totalQuestions,
+          progress: Math.round((session.questionsAnswered / session.totalQuestions) * 100),
+          startedAt: session.startedAt,
+          lastActivityAt: session.lastActivityAt,
+          idleTimeMinutes: idleTimeMinutes,
+          status: idleTimeMinutes > 5 ? 'idle' : idleTimeMinutes > 2 ? 'slow' : 'active'
+        });
+      }
+    });
+
+    // Sort in-progress by idle time (most idle first)
+    inProgress.sort((a, b) => b.idleTimeMinutes - a.idleTimeMinutes);
+
+    res.json({
+      assignmentId,
+      assignmentTitle: assignment.title,
+      className: assignment.classId.name,
+      totalStudents: allStudents.length,
+      totalQuestions,
+      summary: {
+        notStarted: notStarted.length,
+        inProgress: inProgress.length,
+        completed: completed.length
+      },
+      notStarted,
+      inProgress,
+      completed,
+      lastUpdated: new Date()
+    });
+  } catch (error) {
+    console.error('Get live quiz progress error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

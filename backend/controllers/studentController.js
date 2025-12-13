@@ -2,6 +2,7 @@ const AssignedQuestion = require('../models/AssignedQuestion');
 const Response = require('../models/Response');
 const Question = require('../models/Question');
 const Class = require('../models/Class');
+const QuizSession = require('../models/QuizSession');
 
 // Get assigned questions for student (only from their classes)
 exports.getAssignedQuestions = async (req, res) => {
@@ -87,7 +88,7 @@ exports.getAssignedQuestions = async (req, res) => {
 // Submit answer with response time calculation in milliseconds
 exports.submitAnswer = async (req, res) => {
   try {
-    const { questionId, selectedAnswer, classId, startTime, assignmentId } = req.body;
+    const { questionId, selectedAnswer, classId, startTime, assignmentId, currentQuestionIndex, totalQuestions } = req.body;
     const studentId = req.user._id;
 
     if (questionId === undefined || selectedAnswer === undefined || !classId || startTime === undefined) {
@@ -144,6 +145,46 @@ exports.submitAnswer = async (req, res) => {
     });
 
     await response.save();
+
+    // Update or create quiz session for progress tracking
+    if (assignmentId && currentQuestionIndex !== undefined && totalQuestions !== undefined) {
+      try {
+        const session = await QuizSession.findOne({
+          studentId,
+          assignmentId
+        });
+
+        if (session) {
+          // Update existing session
+          session.currentQuestionIndex = currentQuestionIndex;
+          session.questionsAnswered = (session.questionsAnswered || 0) + 1;
+          session.lastActivityAt = new Date();
+          session.status = session.questionsAnswered >= totalQuestions ? 'completed' : 'in_progress';
+          
+          if (session.status === 'completed' && !session.completedAt) {
+            session.completedAt = new Date();
+          }
+          
+          await session.save();
+        } else {
+          // Create new session
+          await QuizSession.create({
+            studentId,
+            assignmentId,
+            status: totalQuestions === 1 ? 'completed' : 'in_progress',
+            currentQuestionIndex,
+            questionsAnswered: 1,
+            totalQuestions,
+            startedAt: new Date(),
+            lastActivityAt: new Date(),
+            completedAt: totalQuestions === 1 ? new Date() : null
+          });
+        }
+      } catch (sessionError) {
+        // Don't fail the submission if session tracking fails
+        console.error('Quiz session tracking error:', sessionError);
+      }
+    }
 
     const savedResponse = await Response.findById(response._id)
       .populate('questionId', 'question options correctAnswer')

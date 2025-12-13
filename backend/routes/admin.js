@@ -37,6 +37,7 @@ router.get('/assignments', authenticate, isAdmin, adminController.getAllAssignme
 router.get('/assignments/:assignmentId/non-participants', authenticate, isAdmin, adminController.getNonParticipants);
 router.get('/assignments/:assignmentId/non-participants/csv', authenticate, isAdmin, adminController.exportNonParticipantsCSV);
 router.get('/assignments/:assignmentId/non-participants/pdf', authenticate, isAdmin, adminController.exportNonParticipantsPDF);
+router.get('/assignments/:assignmentId/live-progress', authenticate, isAdmin, adminController.getLiveQuizProgress);
 
 // Response routes
 router.get('/responses', authenticate, isAdmin, adminController.getAllResponses);
