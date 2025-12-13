@@ -996,6 +996,189 @@ exports.getNonParticipants = async (req, res) => {
   }
 };
 
+// Export non-participants as CSV
+exports.exportNonParticipantsCSV = async (req, res) => {
+  try {
+    const { assignmentId } = req.params;
+
+    // Get the assignment with class info
+    const assignment = await AssignedQuestion.findById(assignmentId).populate('classId');
+    if (!assignment) {
+      return res.status(404).json({ message: 'Assignment not found' });
+    }
+
+    // Get all students in the assigned class
+    const allStudents = await User.find({
+      role: 'student',
+      classIds: assignment.classId._id
+    }).select('name email admissionNo').sort({ admissionNo: 1 });
+
+    // Get unique student IDs who have submitted at least one response for this quiz
+    const participatedStudentIds = await Response.distinct('studentId', {
+      assignedQuestionId: assignmentId
+    });
+
+    // Convert ObjectIds to strings for comparison
+    const participatedIdStrings = participatedStudentIds.map(id => id.toString());
+
+    // Filter out students who have participated
+    const nonParticipants = allStudents.filter(
+      student => !participatedIdStrings.includes(student._id.toString())
+    );
+
+    // Create CSV header
+    const csvHeader = 'Admission No,Name,Email\n';
+
+    // Create CSV rows
+    const csvRows = nonParticipants.map(student => {
+      const admissionNo = student.admissionNo || 'N/A';
+      const name = `"${(student.name || 'Unknown').replace(/"/g, '""')}"`;
+      const email = student.email || 'N/A';
+      return `${admissionNo},${name},${email}`;
+    }).join('\n');
+
+    const csvContent = csvHeader + csvRows;
+
+    // Set headers for file download
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=non_participants_${assignment.title.replace(/\s+/g, '_')}_${Date.now()}.csv`);
+    res.send(csvContent);
+  } catch (error) {
+    console.error('Export non-participants CSV error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// Export non-participants as PDF
+exports.exportNonParticipantsPDF = async (req, res) => {
+  try {
+    const { assignmentId } = req.params;
+
+    // Get the assignment with class info
+    const assignment = await AssignedQuestion.findById(assignmentId).populate('classId');
+    if (!assignment) {
+      return res.status(404).json({ message: 'Assignment not found' });
+    }
+
+    // Get all students in the assigned class
+    const allStudents = await User.find({
+      role: 'student',
+      classIds: assignment.classId._id
+    }).select('name email admissionNo').sort({ admissionNo: 1 });
+
+    // Get unique student IDs who have submitted at least one response for this quiz
+    const participatedStudentIds = await Response.distinct('studentId', {
+      assignedQuestionId: assignmentId
+    });
+
+    // Convert ObjectIds to strings for comparison
+    const participatedIdStrings = participatedStudentIds.map(id => id.toString());
+
+    // Filter out students who have participated
+    const nonParticipants = allStudents.filter(
+      student => !participatedIdStrings.includes(student._id.toString())
+    );
+
+    // Create HTML content for PDF
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            padding: 40px;
+          }
+          h1 {
+            color: #EA580C;
+            text-align: center;
+            margin-bottom: 10px;
+          }
+          .subtitle {
+            text-align: center;
+            color: #6b7280;
+            margin-bottom: 30px;
+            font-size: 14px;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+          }
+          th {
+            background-color: #EA580C;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: bold;
+          }
+          td {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+          }
+          tr:nth-child(even) {
+            background-color: #f9fafb;
+          }
+          tr:hover {
+            background-color: #f3f4f6;
+          }
+          .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #6b7280;
+            font-size: 12px;
+          }
+          .warning {
+            background-color: #FEF3C7;
+            border-left: 4px solid #F59E0B;
+            padding: 12px;
+            margin-bottom: 20px;
+          }
+        </style>
+      </head>
+      <body>
+        <h1>⚠️ Non-Participating Students Report</h1>
+        <p class="subtitle">${assignment.title} - ${assignment.classId.name}</p>
+        <div class="warning">
+          <strong>⚠️ Note:</strong> These students have NOT attempted this quiz yet.
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Admission No</th>
+              <th>Name</th>
+              <th>Email</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${nonParticipants.map(student => `
+              <tr>
+                <td>${student.admissionNo || 'N/A'}</td>
+                <td>${student.name || 'Unknown'}</td>
+                <td>${student.email || 'N/A'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        <div class="footer">
+          <p><strong>Total Students in Class:</strong> ${allStudents.length}</p>
+          <p><strong>Participated:</strong> ${participatedStudentIds.length}</p>
+          <p><strong>Not Participated:</strong> ${nonParticipants.length}</p>
+          <p>Generated on: ${new Date().toLocaleString()}</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    // Send HTML that can be converted to PDF by browser
+    res.setHeader('Content-Type', 'text/html');
+    res.send(htmlContent);
+  } catch (error) {
+    console.error('Export non-participants PDF error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 // ========== VIEW RESPONSES ==========
 
 // Get all responses with filters

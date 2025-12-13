@@ -35,6 +35,8 @@ router.delete('/questions/:id', authenticate, isAdmin, adminController.deleteQue
 router.post('/assign-questions', authenticate, isAdmin, adminController.assignQuestions);
 router.get('/assignments', authenticate, isAdmin, adminController.getAllAssignments);
 router.get('/assignments/:assignmentId/non-participants', authenticate, isAdmin, adminController.getNonParticipants);
+router.get('/assignments/:assignmentId/non-participants/csv', authenticate, isAdmin, adminController.exportNonParticipantsCSV);
+router.get('/assignments/:assignmentId/non-participants/pdf', authenticate, isAdmin, adminController.exportNonParticipantsPDF);
 
 // Response routes
 router.get('/responses', authenticate, isAdmin, adminController.getAllResponses);
