@@ -836,6 +836,10 @@ exports.updateQuestion = async (req, res) => {
       return res.status(404).json({ message: 'Question not found' });
     }
 
+    // Track if correct answer is being changed
+    const oldCorrectAnswer = questionData.correctAnswer;
+    let correctAnswerChanged = false;
+
     if (question) questionData.question = question;
     if (options) {
       if (options.length !== 5) {
@@ -847,6 +851,9 @@ exports.updateQuestion = async (req, res) => {
       if (correctAnswer < 0 || correctAnswer > 4) {
         return res.status(400).json({ message: 'Correct answer must be between 0 and 4' });
       }
+      if (questionData.correctAnswer !== correctAnswer) {
+        correctAnswerChanged = true;
+      }
       questionData.correctAnswer = correctAnswer;
     }
     if (subject !== undefined) questionData.subject = subject;
@@ -854,6 +861,40 @@ exports.updateQuestion = async (req, res) => {
     if (classIds !== undefined) questionData.classIds = classIds;
 
     await questionData.save();
+
+    // If correct answer changed, re-evaluate all existing responses
+    if (correctAnswerChanged) {
+      try {
+        // Use bulk update for better performance, especially with many responses
+        const updateResult = await Response.updateMany(
+          { 
+            questionId: questionData._id,
+            // Only update responses where selectedAnswer matches the new correct answer
+            // These should be marked as correct
+            selectedAnswer: correctAnswer,
+            isCorrect: false // Only update those currently marked incorrect
+          },
+          { $set: { isCorrect: true } }
+        );
+
+        // Also update responses that should be marked incorrect
+        const incorrectUpdateResult = await Response.updateMany(
+          { 
+            questionId: questionData._id,
+            selectedAnswer: { $ne: correctAnswer },
+            isCorrect: true // Only update those currently marked correct
+          },
+          { $set: { isCorrect: false } }
+        );
+
+        const totalUpdated = (updateResult.modifiedCount || 0) + (incorrectUpdateResult.modifiedCount || 0);
+        console.log(`✅ Re-evaluated ${totalUpdated} responses for question ${questionData._id} (${updateResult.modifiedCount} set to correct, ${incorrectUpdateResult.modifiedCount} set to incorrect)`);
+      } catch (reevalError) {
+        // Log error but don't fail the request
+        console.error('Error re-evaluating responses:', reevalError);
+      }
+    }
+
     const updatedQuestion = await Question.findById(questionData._id)
       .populate('classIds', 'name');
     res.json(updatedQuestion);

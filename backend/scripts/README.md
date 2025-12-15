@@ -84,6 +84,76 @@ const students = [
 
 ---
 
+### 3. Fix Question Answer (`fixQuestionAnswer.js`)
+
+Fixes a question's correct answer and automatically re-evaluates all existing student responses.
+
+**When to Use:**
+- When you discover a question has an incorrect answer set
+- When students have already submitted responses based on the wrong answer
+- You need to update the correct answer and fix all historical responses
+
+**Usage:**
+```bash
+node scripts/fixQuestionAnswer.js <questionId> <newCorrectAnswer>
+```
+
+**Example:**
+```bash
+node scripts/fixQuestionAnswer.js 507f1f77bcf86cd799439011 2
+```
+
+This will:
+1. ✅ Update the question's `correctAnswer` field
+2. ✅ Find all existing responses for this question
+3. ✅ Re-evaluate each response's `isCorrect` field based on the new correct answer
+4. ✅ Update all affected responses in the database
+5. ✅ Show a detailed summary of changes
+
+**Parameters:**
+- `questionId`: The MongoDB ObjectId of the question to fix
+- `newCorrectAnswer`: The new correct answer index (0-4)
+
+**Example Output:**
+```
+🔌 Connecting to database...
+✅ Connected to database
+
+📋 Question Details:
+   ID: 507f1f77bcf86cd799439011
+   Question: What is the capital of France?
+   Current Correct Answer: 0 (Paris)
+   New Correct Answer: 2 (London)
+
+🔍 Finding all responses for this question...
+   Found 150 responses
+
+🔄 Re-evaluating responses...
+
+✅ Fix completed successfully!
+
+📊 Summary:
+   Total responses: 150
+   Responses updated: 45
+   - Changed from correct to incorrect: 30
+   - Changed from incorrect to correct: 15
+   Responses unchanged: 105
+   Question correct answer updated: 2 (London)
+
+💡 Note: Leaderboard scores will automatically reflect these changes on next calculation.
+```
+
+**Important Notes:**
+- ⚠️ This script modifies existing data. Make sure you have a database backup before running.
+- ✅ The script is safe to run multiple times (idempotent)
+- ✅ Leaderboard scores will automatically update when recalculated
+- ✅ All future responses will use the new correct answer automatically
+
+**Alternative Method:**
+You can also fix the answer through the admin panel by editing the question. The system will automatically re-evaluate all existing responses when you update the correct answer.
+
+---
+
 ## Requirements
 
 - MongoDB connection must be configured in `.env` file
@@ -98,4 +168,7 @@ const students = [
 - Students can change their password after first login
 - The seed scripts are safe to run multiple times (skips existing users)
 - Make sure to change default passwords in production!
+
+
+
 
