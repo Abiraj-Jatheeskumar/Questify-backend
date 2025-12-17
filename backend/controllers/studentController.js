@@ -211,6 +211,47 @@ exports.submitAnswer = async (req, res) => {
   }
 };
 
+// Update network metrics for a response (called after request completes to get actual RTT)
+exports.updateResponseNetworkMetrics = async (req, res) => {
+  try {
+    const { responseId } = req.params;
+    const { networkMetrics } = req.body;
+    const studentId = req.user._id;
+
+    if (!responseId || !networkMetrics) {
+      return res.status(400).json({ message: 'Response ID and network metrics are required' });
+    }
+
+    // Find the response and verify it belongs to this student
+    const response = await Response.findOne({
+      _id: responseId,
+      studentId: studentId
+    });
+
+    if (!response) {
+      return res.status(404).json({ message: 'Response not found or access denied' });
+    }
+
+    // Update network metrics (preserve 0 values)
+    response.networkMetrics = {
+      rtt_ms: networkMetrics.rtt_ms !== undefined ? networkMetrics.rtt_ms : response.networkMetrics?.rtt_ms,
+      jitter_ms: networkMetrics.jitter_ms !== undefined ? networkMetrics.jitter_ms : response.networkMetrics?.jitter_ms,
+      stability_percent: networkMetrics.stability_percent !== undefined ? networkMetrics.stability_percent : response.networkMetrics?.stability_percent,
+      network_quality: networkMetrics.network_quality !== undefined ? networkMetrics.network_quality : response.networkMetrics?.network_quality
+    };
+
+    await response.save();
+
+    res.json({ 
+      message: 'Network metrics updated successfully',
+      response: response
+    });
+  } catch (error) {
+    console.error('Update network metrics error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 // Get student's responses
 exports.getMyResponses = async (req, res) => {
   try {
