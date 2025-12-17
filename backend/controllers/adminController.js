@@ -1460,12 +1460,13 @@ exports.getLiveQuizProgress = async (req, res) => {
 // Get all responses with filters
 exports.getAllResponses = async (req, res) => {
   try {
-    const { classId, studentId, questionId } = req.query;
+    const { classId, studentId, questionId, assignmentId } = req.query;
     const filter = {};
 
     if (classId) filter.classId = classId;
     if (studentId) filter.studentId = studentId;
     if (questionId) filter.questionId = questionId;
+    if (assignmentId) filter.assignedQuestionId = assignmentId;
 
     const responses = await Response.find(filter)
       .populate('studentId', 'name email admissionNo')

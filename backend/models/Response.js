@@ -48,6 +48,29 @@ const responseSchema = new mongoose.Schema({
     type: String,
     enum: ['answered', 'skipped'],
     default: 'answered'
+  },
+  networkMetrics: {
+    rtt_ms: {
+      type: Number,
+      default: null,
+      description: 'Round Trip Time in milliseconds'
+    },
+    jitter_ms: {
+      type: Number,
+      default: null,
+      description: 'Network jitter in milliseconds'
+    },
+    stability_percent: {
+      type: Number,
+      default: null,
+      description: 'Connection stability percentage (0-100)'
+    },
+    network_quality: {
+      type: String,
+      enum: ['Excellent', 'Good', 'Fair', 'Poor', null],
+      default: null,
+      description: 'Overall network quality classification'
+    }
   }
 });
 

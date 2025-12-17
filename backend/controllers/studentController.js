@@ -88,7 +88,7 @@ exports.getAssignedQuestions = async (req, res) => {
 // Submit answer with response time calculation in milliseconds
 exports.submitAnswer = async (req, res) => {
   try {
-    const { questionId, selectedAnswer, classId, startTime, assignmentId, currentQuestionIndex, totalQuestions } = req.body;
+    const { questionId, selectedAnswer, classId, startTime, assignmentId, currentQuestionIndex, totalQuestions, networkMetrics } = req.body;
     const studentId = req.user._id;
 
     if (questionId === undefined || selectedAnswer === undefined || !classId || startTime === undefined) {
@@ -141,7 +141,15 @@ exports.submitAnswer = async (req, res) => {
       isCorrect,
       startTime: new Date(),
       responseTime: responseTimeMs, // Store in milliseconds
-      status: 'answered'
+      status: 'answered',
+      // Include network metrics if provided
+      // Note: Use !== undefined to preserve 0 values (0 is falsy, but valid)
+      networkMetrics: networkMetrics ? {
+        rtt_ms: networkMetrics.rtt_ms !== undefined ? networkMetrics.rtt_ms : null,
+        jitter_ms: networkMetrics.jitter_ms !== undefined ? networkMetrics.jitter_ms : null,
+        stability_percent: networkMetrics.stability_percent !== undefined ? networkMetrics.stability_percent : null,
+        network_quality: networkMetrics.network_quality !== undefined ? networkMetrics.network_quality : null
+      } : undefined
     });
 
     await response.save();
