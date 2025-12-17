@@ -62,13 +62,7 @@ router.get('/export/json/:assignmentId', authenticate, async (req, res) => {
         correctAnswer: r.questionId?.correctAnswer,
         isCorrect: r.isCorrect,
         responseTime: `${r.responseTime} seconds`,
-        answeredAt: r.answeredAt,
-        networkMetrics: r.networkMetrics ? {
-          rtt_ms: r.networkMetrics.rtt_ms !== undefined ? r.networkMetrics.rtt_ms : null,
-          jitter_ms: r.networkMetrics.jitter_ms !== undefined ? r.networkMetrics.jitter_ms : null,
-          stability_percent: r.networkMetrics.stability_percent !== undefined ? r.networkMetrics.stability_percent : null,
-          network_quality: r.networkMetrics.network_quality !== undefined ? r.networkMetrics.network_quality : null
-        } : null
+        answeredAt: r.answeredAt
       }))
     };
 
@@ -226,8 +220,8 @@ router.get('/export/csv/:assignmentId', authenticate, async (req, res) => {
       }
     };
 
-    // Create CSV header with research fields (added Question ID and Network Metrics)
-    const csvHeader = 'Quiz#,Student Name,Admission No,Email,Class,Question ID,Question,Selected Answer,Correct Answer,Is Correct,Response Time (ms),Response Time (sec),Engagement Level,Attempt Status,Answered At,Timestamp,RTT (ms),Jitter (ms),Stability (%),Network Quality\n';
+    // Create CSV header with research fields (added Question ID)
+    const csvHeader = 'Quiz#,Student Name,Admission No,Email,Class,Question ID,Question,Selected Answer,Correct Answer,Is Correct,Response Time (ms),Response Time (sec),Engagement Level,Attempt Status,Answered At,Timestamp\n';
 
     // Create CSV rows with enhanced data
     const csvRows = responses.map((r, index) => {
@@ -253,14 +247,8 @@ router.get('/export/csv/:assignmentId', authenticate, async (req, res) => {
       const attemptStatus = 'Completed';
       const answeredAt = new Date(r.answeredAt).toISOString();
       const timestamp = new Date(r.answeredAt).getTime();
-      
-      // Network metrics (handle null/undefined for backward compatibility)
-      const rtt_ms = r.networkMetrics?.rtt_ms ?? 'N/A';
-      const jitter_ms = r.networkMetrics?.jitter_ms ?? 'N/A';
-      const stability_percent = r.networkMetrics?.stability_percent ?? 'N/A';
-      const network_quality = r.networkMetrics?.network_quality ?? 'N/A';
 
-      return `${quizNumber},"${studentName}","${admissionNo}","${studentEmail}","${className}",${questionId},${question},${selectedAnswer},${correctAnswer},${isCorrect},${responseTimeMs},${responseTimeSec},${engagementLevel},${attemptStatus},${answeredAt},${timestamp},${rtt_ms},${jitter_ms},${stability_percent},${network_quality}`;
+      return `${quizNumber},"${studentName}","${admissionNo}","${studentEmail}","${className}",${questionId},${question},${selectedAnswer},${correctAnswer},${isCorrect},${responseTimeMs},${responseTimeSec},${engagementLevel},${attemptStatus},${answeredAt},${timestamp}`;
     }).join('\n');
 
     // Summary section
@@ -316,13 +304,7 @@ router.get('/export/json-all', authenticate, async (req, res) => {
         isCorrect: r.isCorrect,
         responseTimeMs: r.responseTime || 0,
         responseTimeSec: r.responseTime ? (r.responseTime / 1000).toFixed(2) : 0,
-        answeredAt: r.answeredAt,
-        networkMetrics: r.networkMetrics ? {
-          rtt_ms: r.networkMetrics.rtt_ms !== undefined ? r.networkMetrics.rtt_ms : null,
-          jitter_ms: r.networkMetrics.jitter_ms !== undefined ? r.networkMetrics.jitter_ms : null,
-          stability_percent: r.networkMetrics.stability_percent !== undefined ? r.networkMetrics.stability_percent : null,
-          network_quality: r.networkMetrics.network_quality !== undefined ? r.networkMetrics.network_quality : null
-        } : null
+        answeredAt: r.answeredAt
       }))
     };
 
@@ -462,8 +444,8 @@ router.get('/export/csv-all', authenticate, async (req, res) => {
       }
     };
 
-    // Create CSV header (added Question ID and Network Metrics)
-    const csvHeader = 'Quiz#,Student Name,Admission No,Email,Class,Question ID,Question,Selected Answer,Correct Answer,Is Correct,Response Time (ms),Response Time (sec),Engagement Level,Attempt Status,Answered At,Timestamp,RTT (ms),Jitter (ms),Stability (%),Network Quality\n';
+    // Create CSV header (added Question ID)
+    const csvHeader = 'Quiz#,Student Name,Admission No,Email,Class,Question ID,Question,Selected Answer,Correct Answer,Is Correct,Response Time (ms),Response Time (sec),Engagement Level,Attempt Status,Answered At,Timestamp\n';
 
     // Create CSV rows
     const csvRows = responses.map((r) => {
@@ -488,14 +470,8 @@ router.get('/export/csv-all', authenticate, async (req, res) => {
       const attemptStatus = 'Completed';
       const answeredAt = new Date(r.answeredAt).toISOString();
       const timestamp = new Date(r.answeredAt).getTime();
-      
-      // Network metrics (handle null/undefined for backward compatibility)
-      const rtt_ms = r.networkMetrics?.rtt_ms ?? 'N/A';
-      const jitter_ms = r.networkMetrics?.jitter_ms ?? 'N/A';
-      const stability_percent = r.networkMetrics?.stability_percent ?? 'N/A';
-      const network_quality = r.networkMetrics?.network_quality ?? 'N/A';
 
-      return `${quizNumber},"${studentName}","${admissionNo}","${studentEmail}","${className}",${questionId},${question},${selectedAnswer},${correctAnswer},${isCorrect},${responseTimeMs},${responseTimeSec},${engagementLevel},${attemptStatus},${answeredAt},${timestamp},${rtt_ms},${jitter_ms},${stability_percent},${network_quality}`;
+      return `${quizNumber},"${studentName}","${admissionNo}","${studentEmail}","${className}",${questionId},${question},${selectedAnswer},${correctAnswer},${isCorrect},${responseTimeMs},${responseTimeSec},${engagementLevel},${attemptStatus},${answeredAt},${timestamp}`;
     }).join('\n');
 
     // Summary section
