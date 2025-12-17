@@ -64,10 +64,10 @@ router.get('/export/json/:assignmentId', authenticate, async (req, res) => {
         responseTime: `${r.responseTime} seconds`,
         answeredAt: r.answeredAt,
         networkMetrics: r.networkMetrics ? {
-          rtt_ms: r.networkMetrics.rtt_ms || null,
-          jitter_ms: r.networkMetrics.jitter_ms || null,
-          stability_percent: r.networkMetrics.stability_percent || null,
-          network_quality: r.networkMetrics.network_quality || null
+          rtt_ms: r.networkMetrics.rtt_ms !== undefined ? r.networkMetrics.rtt_ms : null,
+          jitter_ms: r.networkMetrics.jitter_ms !== undefined ? r.networkMetrics.jitter_ms : null,
+          stability_percent: r.networkMetrics.stability_percent !== undefined ? r.networkMetrics.stability_percent : null,
+          network_quality: r.networkMetrics.network_quality !== undefined ? r.networkMetrics.network_quality : null
         } : null
       }))
     };
@@ -318,10 +318,10 @@ router.get('/export/json-all', authenticate, async (req, res) => {
         responseTimeSec: r.responseTime ? (r.responseTime / 1000).toFixed(2) : 0,
         answeredAt: r.answeredAt,
         networkMetrics: r.networkMetrics ? {
-          rtt_ms: r.networkMetrics.rtt_ms || null,
-          jitter_ms: r.networkMetrics.jitter_ms || null,
-          stability_percent: r.networkMetrics.stability_percent || null,
-          network_quality: r.networkMetrics.network_quality || null
+          rtt_ms: r.networkMetrics.rtt_ms !== undefined ? r.networkMetrics.rtt_ms : null,
+          jitter_ms: r.networkMetrics.jitter_ms !== undefined ? r.networkMetrics.jitter_ms : null,
+          stability_percent: r.networkMetrics.stability_percent !== undefined ? r.networkMetrics.stability_percent : null,
+          network_quality: r.networkMetrics.network_quality !== undefined ? r.networkMetrics.network_quality : null
         } : null
       }))
     };
