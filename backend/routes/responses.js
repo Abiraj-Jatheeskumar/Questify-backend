@@ -180,16 +180,30 @@ router.get('/export/csv/:assignmentId', authenticate, async (req, res) => {
       // Network metrics are used ONLY here to normalize time, not in the engagementScore formula
       let networkPenalty = 1.0; // Default: no penalty (good network)
       
-      if (rtt_ms !== null && rtt_ms !== undefined && jitter_ms !== null && jitter_ms !== undefined) {
+      // Check if we have RTT (required for network normalization)
+      // Note: jitter may be 0 (valid - means no variation) or null/undefined (first question with only 1 RTT measurement)
+      if (rtt_ms !== null && rtt_ms !== undefined) {
         // Normalize RTT: 0-50ms = good (0 penalty), 50-200ms = moderate (0.1-0.3), 200+ = bad (0.3-0.5)
         const rttPenalty = Math.min(0.5, Math.max(0, (rtt_ms - 50) / 500));
         
-        // Normalize jitter: 0-10ms = good (0 penalty), 10-30ms = moderate (0.1-0.2), 30+ = bad (0.2-0.3)
-        const jitterPenalty = Math.min(0.3, Math.max(0, (jitter_ms - 10) / 200));
+        // Jitter calculation: If jitter is available (not null/undefined), use it
+        // Note: jitter = 0 is valid (means no variation, typically for first question with only 1 RTT measurement)
+        let jitterPenalty = 0; // Default: no jitter penalty
+        if (jitter_ms !== null && jitter_ms !== undefined) {
+          // Normalize jitter: 0-10ms = good (0 penalty), 10-30ms = moderate (0.1-0.2), 30+ = bad (0.2-0.3)
+          jitterPenalty = Math.min(0.3, Math.max(0, (jitter_ms - 10) / 200));
+        }
         
         // Combine penalties: networkPenalty = 1.0 + average of RTT and jitter penalties
+        // If jitter not available, use RTT-only penalty (weighted appropriately)
         // Clamped to safe range 1.0-1.5 as required for research
-        networkPenalty = Math.min(1.5, Math.max(1.0, 1.0 + (rttPenalty + jitterPenalty) / 2));
+        if (jitter_ms !== null && jitter_ms !== undefined) {
+          // Both RTT and jitter available: use average
+          networkPenalty = Math.min(1.5, Math.max(1.0, 1.0 + (rttPenalty + jitterPenalty) / 2));
+        } else {
+          // Only RTT available (e.g., first question): use RTT penalty only, scaled to account for missing jitter
+          networkPenalty = Math.min(1.5, Math.max(1.0, 1.0 + rttPenalty * 0.6));
+        }
       }
       
       // Adjust response time by network penalty
@@ -449,16 +463,30 @@ router.get('/export/csv-all', authenticate, async (req, res) => {
       // Network metrics are used ONLY here to normalize time, not in the engagementScore formula
       let networkPenalty = 1.0; // Default: no penalty (good network)
       
-      if (rtt_ms !== null && rtt_ms !== undefined && jitter_ms !== null && jitter_ms !== undefined) {
+      // Check if we have RTT (required for network normalization)
+      // Note: jitter may be 0 (valid - means no variation) or null/undefined (first question with only 1 RTT measurement)
+      if (rtt_ms !== null && rtt_ms !== undefined) {
         // Normalize RTT: 0-50ms = good (0 penalty), 50-200ms = moderate (0.1-0.3), 200+ = bad (0.3-0.5)
         const rttPenalty = Math.min(0.5, Math.max(0, (rtt_ms - 50) / 500));
         
-        // Normalize jitter: 0-10ms = good (0 penalty), 10-30ms = moderate (0.1-0.2), 30+ = bad (0.2-0.3)
-        const jitterPenalty = Math.min(0.3, Math.max(0, (jitter_ms - 10) / 200));
+        // Jitter calculation: If jitter is available (not null/undefined), use it
+        // Note: jitter = 0 is valid (means no variation, typically for first question with only 1 RTT measurement)
+        let jitterPenalty = 0; // Default: no jitter penalty
+        if (jitter_ms !== null && jitter_ms !== undefined) {
+          // Normalize jitter: 0-10ms = good (0 penalty), 10-30ms = moderate (0.1-0.2), 30+ = bad (0.2-0.3)
+          jitterPenalty = Math.min(0.3, Math.max(0, (jitter_ms - 10) / 200));
+        }
         
         // Combine penalties: networkPenalty = 1.0 + average of RTT and jitter penalties
+        // If jitter not available, use RTT-only penalty (weighted appropriately)
         // Clamped to safe range 1.0-1.5 as required for research
-        networkPenalty = Math.min(1.5, Math.max(1.0, 1.0 + (rttPenalty + jitterPenalty) / 2));
+        if (jitter_ms !== null && jitter_ms !== undefined) {
+          // Both RTT and jitter available: use average
+          networkPenalty = Math.min(1.5, Math.max(1.0, 1.0 + (rttPenalty + jitterPenalty) / 2));
+        } else {
+          // Only RTT available (e.g., first question): use RTT penalty only, scaled to account for missing jitter
+          networkPenalty = Math.min(1.5, Math.max(1.0, 1.0 + rttPenalty * 0.6));
+        }
       }
       
       // Adjust response time by network penalty
