@@ -166,7 +166,9 @@ router.get('/export/csv/:assignmentId', authenticate, async (req, res) => {
 
     // Enhanced Engagement Algorithm (Percentile-Based per Question)
     // Compares student's performance to all students' performance on the same question
-    const calculateEngagement = (isCorrect, responseTimeSec, questionId) => {
+    // IMPORTANT: Network metrics are used ONLY to normalize response time, NOT directly in engagementScore
+    // This ensures fairness by compensating for network delays without changing the core formula
+    const calculateEngagement = (isCorrect, responseTimeSec, questionId, rtt_ms = null, jitter_ms = null) => {
       const responseTimeSecNum = parseFloat(responseTimeSec);
       
       // If no response time, default to passive
@@ -174,13 +176,34 @@ router.get('/export/csv/:assignmentId', authenticate, async (req, res) => {
         return 'Passive';
       }
       
+      // Network normalization: Calculate penalty to adjust response time for network conditions
+      // Network metrics are used ONLY here to normalize time, not in the engagementScore formula
+      let networkPenalty = 1.0; // Default: no penalty (good network)
+      
+      if (rtt_ms !== null && rtt_ms !== undefined && jitter_ms !== null && jitter_ms !== undefined) {
+        // Normalize RTT: 0-50ms = good (0 penalty), 50-200ms = moderate (0.1-0.3), 200+ = bad (0.3-0.5)
+        const rttPenalty = Math.min(0.5, Math.max(0, (rtt_ms - 50) / 500));
+        
+        // Normalize jitter: 0-10ms = good (0 penalty), 10-30ms = moderate (0.1-0.2), 30+ = bad (0.2-0.3)
+        const jitterPenalty = Math.min(0.3, Math.max(0, (jitter_ms - 10) / 200));
+        
+        // Combine penalties: networkPenalty = 1.0 + average of RTT and jitter penalties
+        // Clamped to safe range 1.0-1.5 as required for research
+        networkPenalty = Math.min(1.5, Math.max(1.0, 1.0 + (rttPenalty + jitterPenalty) / 2));
+      }
+      
+      // Adjust response time by network penalty
+      // Higher penalty (worse network) reduces adjusted time, making student appear faster
+      // This compensates for network delays without affecting correctness or changing formula weights
+      const adjustedResponseTime = responseTimeSecNum / networkPenalty;
+      
       const qId = questionId?.toString();
       const stats = questionStats[qId];
       
       // If no stats for this question, fall back to confidence-based
       if (!stats || !stats.medianTime) {
-        const isFast = responseTimeSecNum < 15;
-        const isMedium = responseTimeSecNum >= 15 && responseTimeSecNum <= 30;
+        const isFast = adjustedResponseTime < 15;
+        const isMedium = adjustedResponseTime >= 15 && adjustedResponseTime <= 30;
         if (isCorrect && (isFast || isMedium)) return 'Active';
         if (isCorrect) return 'Moderate';
         if (!isCorrect && isFast) return 'Passive';
@@ -189,16 +212,17 @@ router.get('/export/csv/:assignmentId', authenticate, async (req, res) => {
       }
       
       // Relative speed: How does this student compare to others on this question?
+      // Uses ADJUSTED response time (network-normalized) for fair comparison
       // Faster than median = engaged, slower = less engaged
-      const isFasterThanMedian = responseTimeSecNum < stats.medianTime;
-      const isFasterThanP25 = responseTimeSecNum < stats.p25Time; // Top 25% fastest
-      const isSlowerThanP75 = responseTimeSecNum > stats.p75Time; // Bottom 25% slowest
+      const isFasterThanMedian = adjustedResponseTime < stats.medianTime;
+      const isFasterThanP25 = adjustedResponseTime < stats.p25Time; // Top 25% fastest
+      const isSlowerThanP75 = adjustedResponseTime > stats.p75Time; // Bottom 25% slowest
       
       // Correctness score (adjusted by question difficulty)
       const correctnessScore = isCorrect ? 1.0 : 0.0;
       const questionDifficulty = 1 - stats.avgCorrectness; // Higher = harder question
       
-      // Speed score based on percentile position
+      // Speed score based on percentile position (using adjusted response time)
       let speedScore = 0.5; // Default neutral
       if (isFasterThanP25) {
         speedScore = 1.0; // Top 25% fastest
@@ -211,6 +235,7 @@ router.get('/export/csv/:assignmentId', authenticate, async (req, res) => {
       }
       
       // Combined engagement score
+      // IMPORTANT: Formula remains exactly as specified - network does NOT appear here
       // Correctness (60%) + Speed relative to question (40%)
       // Harder questions get slight boost for correct answers
       const difficultyBonus = isCorrect && questionDifficulty > 0.3 ? 0.1 : 0;
@@ -248,7 +273,14 @@ router.get('/export/csv/:assignmentId', authenticate, async (req, res) => {
       const responseTimeSec = r.responseTime ? (r.responseTime / 1000).toFixed(2) : 0;
       
       // Calculate engagement level using percentile-based formula (compares to all students on same question)
-      const engagementLevel = calculateEngagement(r.isCorrect, responseTimeSec, r.questionId?._id);
+      // Network metrics passed for response time normalization only
+      const engagementLevel = calculateEngagement(
+        r.isCorrect, 
+        responseTimeSec, 
+        r.questionId?._id,
+        r.networkMetrics?.rtt_ms,
+        r.networkMetrics?.jitter_ms
+      );
       
       const attemptStatus = 'Completed';
       const answeredAt = new Date(r.answeredAt).toISOString();
@@ -403,7 +435,9 @@ router.get('/export/csv-all', authenticate, async (req, res) => {
 
     // Enhanced Engagement Algorithm (Percentile-Based per Question)
     // Compares student's performance to all students' performance on the same question
-    const calculateEngagement = (isCorrect, responseTimeSec, questionId) => {
+    // IMPORTANT: Network metrics are used ONLY to normalize response time, NOT directly in engagementScore
+    // This ensures fairness by compensating for network delays without changing the core formula
+    const calculateEngagement = (isCorrect, responseTimeSec, questionId, rtt_ms = null, jitter_ms = null) => {
       const responseTimeSecNum = parseFloat(responseTimeSec);
       
       // If no response time, default to passive
@@ -411,13 +445,34 @@ router.get('/export/csv-all', authenticate, async (req, res) => {
         return 'Passive';
       }
       
+      // Network normalization: Calculate penalty to adjust response time for network conditions
+      // Network metrics are used ONLY here to normalize time, not in the engagementScore formula
+      let networkPenalty = 1.0; // Default: no penalty (good network)
+      
+      if (rtt_ms !== null && rtt_ms !== undefined && jitter_ms !== null && jitter_ms !== undefined) {
+        // Normalize RTT: 0-50ms = good (0 penalty), 50-200ms = moderate (0.1-0.3), 200+ = bad (0.3-0.5)
+        const rttPenalty = Math.min(0.5, Math.max(0, (rtt_ms - 50) / 500));
+        
+        // Normalize jitter: 0-10ms = good (0 penalty), 10-30ms = moderate (0.1-0.2), 30+ = bad (0.2-0.3)
+        const jitterPenalty = Math.min(0.3, Math.max(0, (jitter_ms - 10) / 200));
+        
+        // Combine penalties: networkPenalty = 1.0 + average of RTT and jitter penalties
+        // Clamped to safe range 1.0-1.5 as required for research
+        networkPenalty = Math.min(1.5, Math.max(1.0, 1.0 + (rttPenalty + jitterPenalty) / 2));
+      }
+      
+      // Adjust response time by network penalty
+      // Higher penalty (worse network) reduces adjusted time, making student appear faster
+      // This compensates for network delays without affecting correctness or changing formula weights
+      const adjustedResponseTime = responseTimeSecNum / networkPenalty;
+      
       const qId = questionId?.toString();
       const stats = questionStats[qId];
       
       // If no stats for this question, fall back to confidence-based
       if (!stats || !stats.medianTime) {
-        const isFast = responseTimeSecNum < 15;
-        const isMedium = responseTimeSecNum >= 15 && responseTimeSecNum <= 30;
+        const isFast = adjustedResponseTime < 15;
+        const isMedium = adjustedResponseTime >= 15 && adjustedResponseTime <= 30;
         if (isCorrect && (isFast || isMedium)) return 'Active';
         if (isCorrect) return 'Moderate';
         if (!isCorrect && isFast) return 'Passive';
@@ -426,15 +481,16 @@ router.get('/export/csv-all', authenticate, async (req, res) => {
       }
       
       // Relative speed: How does this student compare to others on this question?
-      const isFasterThanMedian = responseTimeSecNum < stats.medianTime;
-      const isFasterThanP25 = responseTimeSecNum < stats.p25Time; // Top 25% fastest
-      const isSlowerThanP75 = responseTimeSecNum > stats.p75Time; // Bottom 25% slowest
+      // Uses ADJUSTED response time (network-normalized) for fair comparison
+      const isFasterThanMedian = adjustedResponseTime < stats.medianTime;
+      const isFasterThanP25 = adjustedResponseTime < stats.p25Time; // Top 25% fastest
+      const isSlowerThanP75 = adjustedResponseTime > stats.p75Time; // Bottom 25% slowest
       
       // Correctness score (adjusted by question difficulty)
       const correctnessScore = isCorrect ? 1.0 : 0.0;
       const questionDifficulty = 1 - stats.avgCorrectness; // Higher = harder question
       
-      // Speed score based on percentile position
+      // Speed score based on percentile position (using adjusted response time)
       let speedScore = 0.5; // Default neutral
       if (isFasterThanP25) {
         speedScore = 1.0; // Top 25% fastest
@@ -447,6 +503,7 @@ router.get('/export/csv-all', authenticate, async (req, res) => {
       }
       
       // Combined engagement score
+      // IMPORTANT: Formula remains exactly as specified - network does NOT appear here
       // Correctness (60%) + Speed relative to question (40%)
       // Harder questions get slight boost for correct answers
       const difficultyBonus = isCorrect && questionDifficulty > 0.3 ? 0.1 : 0;
@@ -483,7 +540,14 @@ router.get('/export/csv-all', authenticate, async (req, res) => {
       const responseTimeSec = r.responseTime ? (r.responseTime / 1000).toFixed(2) : 0;
       
       // Calculate engagement level using percentile-based formula (compares to all students on same question)
-      const engagementLevel = calculateEngagement(r.isCorrect, responseTimeSec, r.questionId?._id);
+      // Network metrics passed for response time normalization only
+      const engagementLevel = calculateEngagement(
+        r.isCorrect, 
+        responseTimeSec, 
+        r.questionId?._id,
+        r.networkMetrics?.rtt_ms,
+        r.networkMetrics?.jitter_ms
+      );
       
       const attemptStatus = 'Completed';
       const answeredAt = new Date(r.answeredAt).toISOString();
